@@ -8,9 +8,14 @@ import CompanyPicker from "./pages/CompanyPicker.jsx";
 import Calendar from "./pages/Calendar.jsx";
 import { Loader2 } from "lucide-react";
 
+// Sprawdzamy hash URL NATYCHMIAST (zanim Supabase go przetworzy i wyczyści),
+// żeby niezawodnie wykryć link z zaproszenia lub resetu hasła.
+const initialHash = typeof window !== "undefined" ? window.location.hash : "";
+const cameFromInviteOrRecovery = /type=invite|type=recovery/.test(initialHash);
+
 export default function App(){
   const [session, setSession] = useState(undefined); // undefined = jeszcze nie wiadomo, null = brak
-  const [needsPassword, setNeedsPassword] = useState(false);
+  const [needsPassword, setNeedsPassword] = useState(cameFromInviteOrRecovery);
   const [profile, setProfile] = useState(null);
   const [memberships, setMemberships] = useState([]);
   const [loadingProfile, setLoadingProfile] = useState(false);
@@ -62,12 +67,15 @@ export default function App(){
     return <CenteredLoader text="Wczytywanie…" />;
   }
 
-  if (!session) {
-    return <Login />;
+  if (needsPassword) {
+    if (!session) {
+      return <CenteredLoader text="Finalizowanie zaproszenia…" />;
+    }
+    return <SetPassword onDone={() => setNeedsPassword(false)} />;
   }
 
-  if (needsPassword) {
-    return <SetPassword onDone={() => setNeedsPassword(false)} />;
+  if (!session) {
+    return <Login />;
   }
 
   if (loadingProfile || !profile) {
@@ -84,7 +92,6 @@ export default function App(){
 
   const handleLogout = () => supabase.auth.signOut();
 
-  // Super-admin: pełny panel zarządzania firmami; może też wejść do kalendarza dowolnej firmy
   if (profile.is_super_admin) {
     if (activeCompanyId) {
       return (
@@ -106,7 +113,6 @@ export default function App(){
     );
   }
 
-  // Zwykły użytkownik bez żadnej firmy
   if (memberships.length === 0) {
     return (
       <div style={{ ...pageWrap, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
@@ -119,7 +125,6 @@ export default function App(){
     );
   }
 
-  // Jedna firma → od razu kalendarz; kilka → wybór
   if (!activeCompanyId) {
     if (memberships.length === 1) {
       return (
