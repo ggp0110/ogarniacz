@@ -227,17 +227,31 @@ export default function Calendar({ companyId, role, profile, onExit, onLogout })
       created_by: profile.id,
       is_private: canPrivateForForm ? !!privateRef.current?.checked : false,
     };
-    const { error: err } = await supabase.from("events").insert(payload);
+    const { data, error: err } = await supabase.from("events").insert(payload).select().single();
     if (err) { setFormError(err.message); return; }
+    // pokazujemy nowe zadanie natychmiast, bez czekania na realtime
+    setEvents(prev => [...(prev || []), data]);
     if (titleRef.current) titleRef.current.value = "";
     if (timeRef.current) timeRef.current.value = "";
     if (privateRef.current) privateRef.current.checked = false;
     setShowForm(false);
   }
 
-  async function toggleComplete(ev){ await supabase.from("events").update({ completed: !ev.completed }).eq("id", ev.id); }
-  async function toggleStarred(ev){ await supabase.from("events").update({ starred: !ev.starred }).eq("id", ev.id); }
-  async function removeEvent(id){ await supabase.from("events").delete().eq("id", id); }
+  async function toggleComplete(ev){
+    setEvents(prev => (prev || []).map(e => e.id === ev.id ? { ...e, completed: !ev.completed } : e));
+    const { error: err } = await supabase.from("events").update({ completed: !ev.completed }).eq("id", ev.id);
+    if (err) { setError(err.message); loadEvents(); }
+  }
+  async function toggleStarred(ev){
+    setEvents(prev => (prev || []).map(e => e.id === ev.id ? { ...e, starred: !ev.starred } : e));
+    const { error: err } = await supabase.from("events").update({ starred: !ev.starred }).eq("id", ev.id);
+    if (err) { setError(err.message); loadEvents(); }
+  }
+  async function removeEvent(id){
+    setEvents(prev => (prev || []).filter(e => e.id !== id));
+    const { error: err } = await supabase.from("events").delete().eq("id", id);
+    if (err) { setError(err.message); loadEvents(); }
+  }
 
   if (events === null) {
     return <div style={{ ...pageWrap, display: "flex", alignItems: "center", justifyContent: "center", gap: 8, color: "#8b8f86" }}><Loader2 size={18} /> Wczytywanie…</div>;
