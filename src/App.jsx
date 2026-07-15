@@ -69,6 +69,7 @@ export default function App(){
 
   if (needsPassword) {
     if (!session) {
+      // token z linku zaproszenia jeszcze się przetwarza — czekamy chwilę, nie pokazujemy logowania
       return <CenteredLoader text="Finalizowanie zaproszenia…" />;
     }
     return <SetPassword onDone={() => setNeedsPassword(false)} />;
@@ -92,6 +93,7 @@ export default function App(){
 
   const handleLogout = () => supabase.auth.signOut();
 
+  // Super-admin: pełny panel zarządzania firmami; może też wejść do kalendarza dowolnej firmy
   if (profile.is_super_admin) {
     if (activeCompanyId) {
       return (
@@ -108,11 +110,13 @@ export default function App(){
       <SuperAdminHome
         profile={profile}
         onEnterCompany={(id) => setActiveCompanyId(id)}
+        onEnterAll={() => setActiveCompanyId("ALL")}
         onLogout={handleLogout}
       />
     );
   }
 
+  // Zwykły użytkownik bez żadnej firmy
   if (memberships.length === 0) {
     return (
       <div style={{ ...pageWrap, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
@@ -125,6 +129,7 @@ export default function App(){
     );
   }
 
+  // Jedna firma → od razu kalendarz; kilka → wybór (w tym "wszystkie naraz")
   if (!activeCompanyId) {
     if (memberships.length === 1) {
       return (
@@ -141,6 +146,7 @@ export default function App(){
       <CompanyPicker
         memberships={memberships}
         onPick={(id) => setActiveCompanyId(id)}
+        onPickAll={() => setActiveCompanyId("ALL")}
         onLogout={handleLogout}
       />
     );

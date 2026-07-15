@@ -1,9 +1,9 @@
 import React, { useEffect, useState, useMemo, useCallback, useRef } from "react";
 import { supabase } from "../supabaseClient";
-import { pageWrap, card, inputStyle, saveBtn, cancelBtn, addBtn, tabStyle, iconBtn, CATEGORY_META, TYPE_META, colorForIndex } from "../theme";
+import { pageWrap, card, inputStyle, saveBtn, cancelBtn, addBtn, tabStyle, iconBtn, CATEGORY_META, TYPE_META, colorForIndex, USER_COLOR_PALETTE } from "../theme";
 import {
   ChevronLeft, ChevronRight, Plus, X, MessageCircle, Check, Users, CalendarDays,
-  ListChecks, Loader2, LogOut, Star, Lock, Building2, Settings, ArrowLeft
+  ListChecks, Loader2, LogOut, Star, Lock, Building2, Settings, ArrowLeft, LayoutGrid
 } from "lucide-react";
 
 function pad(n){ return n.toString().padStart(2,"0"); }
@@ -21,8 +21,12 @@ const MONTHS_PL = ["Styczeń","Luty","Marzec","Kwiecień","Maj","Czerwiec","Lipi
 const DAYS_PL = ["Pon","Wt","Śr","Czw","Pt","Sob","Nd"];
 
 export default function Calendar({ companyId, role, profile, onExit, onLogout }){
+  const isAll = companyId === "ALL";
+
   const [companyName, setCompanyName] = useState("");
-  const [team, setTeam] = useState([]); // memberships + profiles dla tej firmy
+  const [team, setTeam] = useState([]); // tryb pojedynczej firmy: memberships + profiles
+  const [companiesMeta, setCompaniesMeta] = useState({}); // tryb "wszystkie": {companyId: nazwa}
+  const [teamByCompany, setTeamByCompany] = useState({}); // tryb "wszystkie": {companyId: [membership...]}
   const [events, setEvents] = useState(null);
   const [error, setError] = useState("");
   const [cursor, setCursor] = useState(new Date());
@@ -34,6 +38,8 @@ export default function Calendar({ companyId, role, profile, onExit, onLogout })
   const [openComments, setOpenComments] = useState({});
   const [commentsByEvent, setCommentsByEvent] = useState({});
   const [filterAssignee, setFilterAssignee] = useState("wszyscy");
+  const [filterCompany, setFilterCompany] = useState("wszystkie");
+  const [formCompanyId, setFormCompanyId] = useState("");
 
   const titleRef = useRef(null);
   const typeRef = useRef(null);
@@ -44,40 +50,103 @@ export default function Calendar({ companyId, role, profile, onExit, onLogout })
 
   const isBossOrAdmin = role === "szef";
 
+  useEffect(() => {
+    if (isAll) {
+      const ids = Object.keys(companiesMeta);
+      if (ids.length > 0 && !ids.includes(formCompanyId)) setFormCompanyId(ids[0]);
+    }
+  }, [isAll, companiesMeta, formCompanyId]);
+
+  // --- kolory i nazwy: tryb pojedynczej firmy (po osobie) ---
   const colorFor = useCallback((profileId) => {
+    if (!profileId) return "#1a5c38";
+    const t = team.find(t => t.profile_id === profileId);
+    if (t?.color) return t.color;
     const idx = team.findIndex(t => t.profile_id === profileId);
     return idx >= 0 ? colorForIndex(idx) : "#6b6a5e";
   }, [team]);
   const nameFor = useCallback((profileId) => {
+    if (!profileId) return "Cały zespół";
     const t = team.find(t => t.profile_id === profileId);
     return t?.profiles?.full_name || t?.profiles?.email || "—";
   }, [team]);
 
-  const loadCompanyAndTeam = useCallback(async () => {
-    const { data: comp } = await supabase.from("companies").select("name").eq("id", companyId).single();
-    setCompanyName(comp?.name || "");
-    const { data: mem } = await supabase
-      .from("memberships")
-      .select("id, role, profile_id, profiles ( id, full_name, email )")
-      .eq("company_id", companyId);
-    setTeam(mem || []);
-  }, [companyId]);
+  // --- kolory: tryb "wszystkie firmy" (po firmie) ---
+  const companyColor = useCallback((cid) => {
+    const ids = Object.keys(companiesMeta);
+    const idx = ids.indexOf(cid);
+    return idx >= 0 ? colorForIndex(idx) : "#6b6a5e";
+  }, [companiesMeta]);
+
+  // --- funkcje uniwersalne używane przy renderowaniu zdarzeń (przyjmują CAŁY event) ---
+  const eventColor = useCallback((ev) => (isAll ? companyColor(ev.company_id) : colorFor(ev.assignee_id)), [isAll, companyColor, colorFor]);
+  const eventAssigneeName = useCallback((ev) => {
+    if (!ev.assignee_id) return "Cały zespół";
+    if (isAll) {
+      const roster = teamByCompany[ev.company_id] || [];
+      const t = roster.find(t => t.profile_id === ev.assignee_id);
+      return t?.profiles?.full_name || t?.profiles?.email || "—";
+    }
+    return nameFor(ev.assignee_id);
+  }, [isAll, teamByCompany, nameFor]);
+
+  // czy użytkownik jest szefem/adminem w KTÓREJKOLWIEK firmie (dotyczy trybu "wszystkie")
+  const isBossSomewhere = isAll
+    ? (profile.is_super_admin || Object.values(teamByCompany).some(list => list.some(m => m.profile_id === profile.id && m.role === "szef")))
+    : isBossOrAdmin;
+  // czy użytkownik jest szefem w konkretnej firmie wybranej w formularzu (dotyczy trybu "wszystkie")
+  const canPrivateForForm = isAll
+    ? (profile.is_super_admin || (teamByCompany[formCompanyId] || []).some(m => m.profile_id === profile.id && m.role === "szef"))
+    : isBossOrAdmin;
+
+  const loadMeta = useCallback(async () => {
+    if (isAll) {
+      const { data: comps } = await supabase.from("companies").select("id, name").order("name");
+      const list = comps || [];
+      const metaMap = {};
+      list.forEach(c => { metaMap[c.id] = c.name; });
+      setCompaniesMeta(metaMap);
+      const ids = list.map(c => c.id);
+      if (ids.length === 0) { setTeamByCompany({}); return; }
+      const { data: mem } = await supabase
+        .from("memberships")
+        .select("id, role, color, profile_id, company_id, profiles ( id, full_name, email )")
+        .in("company_id", ids);
+      const grouped = {};
+      (mem || []).forEach(m => { grouped[m.company_id] = grouped[m.company_id] || []; grouped[m.company_id].push(m); });
+      setTeamByCompany(grouped);
+    } else {
+      const { data: comp } = await supabase.from("companies").select("name").eq("id", companyId).single();
+      setCompanyName(comp?.name || "");
+      const { data: mem } = await supabase
+        .from("memberships")
+        .select("id, role, color, profile_id, profiles ( id, full_name, email )")
+        .eq("company_id", companyId);
+      setTeam(mem || []);
+    }
+  }, [companyId, isAll]);
 
   const loadEvents = useCallback(async () => {
-    const { data, error: err } = await supabase
-      .from("events")
-      .select("*")
-      .eq("company_id", companyId)
-      .order("event_date");
+    let query = supabase.from("events").select("*").order("event_date");
+    if (isAll) {
+      const ids = Object.keys(companiesMeta);
+      if (ids.length === 0) { setEvents([]); return; }
+      query = query.in("company_id", ids);
+    } else {
+      query = query.eq("company_id", companyId);
+    }
+    const { data, error: err } = await query;
     if (err) setError(err.message);
     else setEvents(data || []);
-  }, [companyId]);
+  }, [companyId, isAll, companiesMeta]);
 
-  useEffect(() => { loadCompanyAndTeam(); loadEvents(); }, [loadCompanyAndTeam, loadEvents]);
+  useEffect(() => { loadMeta(); }, [loadMeta]);
+  useEffect(() => { loadEvents(); }, [loadEvents]);
 
   useEffect(() => {
-    const channel = supabase.channel(`company-events-${companyId}`)
-      .on("postgres_changes", { event: "*", schema: "public", table: "events", filter: `company_id=eq.${companyId}` }, () => loadEvents())
+    const channelName = isAll ? "all-companies-events" : `company-events-${companyId}`;
+    const channel = supabase.channel(channelName)
+      .on("postgres_changes", { event: "*", schema: "public", table: "events", ...(isAll ? {} : { filter: `company_id=eq.${companyId}` }) }, () => loadEvents())
       .on("postgres_changes", { event: "*", schema: "public", table: "event_comments" }, (payload) => {
         const evId = payload.new?.event_id || payload.old?.event_id;
         if (evId && openComments[evId]) loadComments(evId);
@@ -85,7 +154,7 @@ export default function Calendar({ companyId, role, profile, onExit, onLogout })
       .subscribe();
     return () => { supabase.removeChannel(channel); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [companyId]);
+  }, [companyId, isAll]);
 
   async function loadComments(eventId){
     const { data } = await supabase
@@ -113,9 +182,13 @@ export default function Calendar({ companyId, role, profile, onExit, onLogout })
 
   const visibleEvents = useMemo(() => {
     let list = events || [];
-    if (filterAssignee !== "wszyscy") list = list.filter(ev => ev.assignee_id === filterAssignee);
+    if (isAll) {
+      if (filterCompany !== "wszystkie") list = list.filter(ev => ev.company_id === filterCompany);
+    } else {
+      if (filterAssignee !== "wszyscy") list = list.filter(ev => ev.assignee_id === filterAssignee || ev.assignee_id === null);
+    }
     return list;
-  }, [events, filterAssignee]);
+  }, [events, filterAssignee, filterCompany, isAll]);
 
   const year = cursor.getFullYear();
   const month = cursor.getMonth();
@@ -140,9 +213,11 @@ export default function Calendar({ companyId, role, profile, onExit, onLogout })
   async function addEvent(){
     const title = (titleRef.current?.value || "").trim();
     if (!title) { setFormError("Wpisz nazwę zadania lub spotkania."); return; }
+    const targetCompanyId = isAll ? formCompanyId : companyId;
+    if (!targetCompanyId) { setFormError("Wybierz firmę."); return; }
     setFormError("");
     const payload = {
-      company_id: companyId,
+      company_id: targetCompanyId,
       title,
       type: typeRef.current?.value || "zadanie",
       category: categoryRef.current?.value || "inne",
@@ -150,7 +225,7 @@ export default function Calendar({ companyId, role, profile, onExit, onLogout })
       event_time: timeRef.current?.value || null,
       assignee_id: assigneeRef.current?.value || null,
       created_by: profile.id,
-      is_private: isBossOrAdmin ? !!privateRef.current?.checked : false,
+      is_private: canPrivateForForm ? !!privateRef.current?.checked : false,
     };
     const { error: err } = await supabase.from("events").insert(payload);
     if (err) { setFormError(err.message); return; }
@@ -168,23 +243,27 @@ export default function Calendar({ companyId, role, profile, onExit, onLogout })
     return <div style={{ ...pageWrap, display: "flex", alignItems: "center", justifyContent: "center", gap: 8, color: "#8b8f86" }}><Loader2 size={18} /> Wczytywanie…</div>;
   }
 
+  const rosterForForm = isAll ? (teamByCompany[formCompanyId] || []) : team;
+
   return (
     <div style={pageWrap}>
-      <div style={{ maxWidth: 980, margin: "0 auto", padding: "24px 16px 60px" }}>
-        <header style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16, flexWrap: "wrap", gap: 10 }}>
+      <div className="app-shell" style={{ maxWidth: 980, margin: "0 auto", padding: "24px 16px 60px" }}>
+        <header className="top-header" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16, flexWrap: "wrap", gap: 10 }}>
           <div>
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
               {onExit && <button onClick={onExit} style={iconBtn} title="Wróć"><ArrowLeft size={16} /></button>}
-              <Building2 size={16} color="#1a5c38" />
-              <span style={{ fontFamily: "'Fraunces', serif", fontWeight: 700, fontSize: 22, color: "#1a5c38" }}>{companyName || "Kalendarz"}</span>
+              {isAll ? <LayoutGrid size={16} color="#1a5c38" /> : <Building2 size={16} color="#1a5c38" />}
+              <span className="top-header-title" style={{ fontFamily: "'Fraunces', serif", fontWeight: 700, fontSize: 22, color: "#1a5c38" }}>
+                {isAll ? "Wszystkie firmy" : (companyName || "Kalendarz")}
+              </span>
             </div>
             <div style={{ fontSize: 12, color: "#8b8f86", marginTop: 2, display: "flex", alignItems: "center", gap: 6 }}>
               <Users size={12} /> {profile.full_name || profile.email}
-              {isBossOrAdmin && <span style={{ fontSize: 10, fontWeight: 800, color: "#1a5c38", background: "#e7efe9", padding: "1px 7px", borderRadius: 20 }}>SZEF</span>}
+              {isBossSomewhere && <span style={{ fontSize: 10, fontWeight: 800, color: "#1a5c38", background: "#e7efe9", padding: "1px 7px", borderRadius: 20 }}>SZEF</span>}
             </div>
           </div>
           <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-            {isBossOrAdmin && (
+            {!isAll && isBossOrAdmin && (
               <button onClick={() => setShowTeamPanel(s => !s)} style={tabStyle(showTeamPanel)}><Settings size={15} style={{ marginRight: 6 }} /> Zespół</button>
             )}
             <button onClick={() => setView("miesiac")} style={tabStyle(view === "miesiac")}><CalendarDays size={15} style={{ marginRight: 6 }} /> Miesiąc</button>
@@ -195,17 +274,36 @@ export default function Calendar({ companyId, role, profile, onExit, onLogout })
 
         {error && <div style={{ background: "#fdeceb", color: "#9a3b34", padding: "8px 12px", borderRadius: 8, fontSize: 13, marginBottom: 14 }}>{error}</div>}
 
-        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 14 }}>
-          {team.map(t => (
-            <span key={t.profile_id} style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11.5, color: "#8b8f86" }}>
-              <span style={{ width: 8, height: 8, borderRadius: "50%", background: colorFor(t.profile_id), display: "inline-block" }} />
-              {(t.profiles?.full_name || t.profiles?.email || "").split(" ")[0]}
-            </span>
-          ))}
-        </div>
+        {isAll ? (
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 14 }}>
+            {Object.entries(companiesMeta).map(([id, name]) => (
+              <span key={id} style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11.5, color: "#8b8f86" }}>
+                <span style={{ width: 8, height: 8, borderRadius: "50%", background: companyColor(id), display: "inline-block" }} />
+                {name}
+              </span>
+            ))}
+          </div>
+        ) : (
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 14 }}>
+            {team.map(t => (
+              <span key={t.profile_id} style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11.5, color: "#8b8f86" }}>
+                <span style={{ width: 8, height: 8, borderRadius: "50%", background: colorFor(t.profile_id), display: "inline-block" }} />
+                {(t.profiles?.full_name || t.profiles?.email || "").split(" ")[0]}
+              </span>
+            ))}
+          </div>
+        )}
 
-        {isBossOrAdmin && (
-          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14 }}>
+        {isAll ? (
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
+            <span style={{ fontSize: 12.5, color: "#8b8f86", fontWeight: 700 }}>Pokaż firmę:</span>
+            <select value={filterCompany} onChange={e => setFilterCompany(e.target.value)} style={{ ...inputStyle, maxWidth: 220 }}>
+              <option value="wszystkie">Wszystkie firmy</option>
+              {Object.entries(companiesMeta).map(([id, name]) => <option key={id} value={id}>{name}</option>)}
+            </select>
+          </div>
+        ) : isBossOrAdmin && (
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
             <span style={{ fontSize: 12.5, color: "#8b8f86", fontWeight: 700 }}>Pokaż zadania:</span>
             <select value={filterAssignee} onChange={e => setFilterAssignee(e.target.value)} style={{ ...inputStyle, maxWidth: 220 }}>
               <option value="wszyscy">Cały zespół</option>
@@ -214,8 +312,8 @@ export default function Calendar({ companyId, role, profile, onExit, onLogout })
           </div>
         )}
 
-        {showTeamPanel && isBossOrAdmin && (
-          <TeamPanel companyId={companyId} team={team} onChanged={loadCompanyAndTeam} />
+        {!isAll && showTeamPanel && isBossOrAdmin && (
+          <TeamPanel companyId={companyId} team={team} onChanged={loadMeta} />
         )}
 
         {view === "miesiac" ? (
@@ -239,7 +337,7 @@ export default function Calendar({ companyId, role, profile, onExit, onLogout })
                   const allDone = dayList.length > 0 && dayList.every(e => e.completed);
                   const hasStarred = dayList.some(e => e.starred && !e.completed);
                   return (
-                    <button key={i} onClick={() => setSelectedDate(d)} style={{
+                    <button key={i} onClick={() => setSelectedDate(d)} className="day-grid-cell" style={{
                       border: isSelected ? "2px solid #1a5c38" : "1px solid #ece7d8",
                       background: isToday ? "#fbf7ec" : "#fff", borderRadius: 9, minHeight: 56, padding: 5,
                       textAlign: "left", cursor: "pointer", opacity: inMonth ? 1 : 0.35, display: "flex", flexDirection: "column", gap: 3,
@@ -249,7 +347,7 @@ export default function Calendar({ companyId, role, profile, onExit, onLogout })
                       {hasStarred && <Star size={9} fill="#c9a84c" color="#c9a84c" />}
                       <div style={{ display: "flex", gap: 3, flexWrap: "wrap" }}>
                         {dayList.slice(0,3).map(ev => (
-                          <span key={ev.id} style={{ width: 5, height: 5, borderRadius: "50%", background: colorFor(ev.assignee_id), opacity: ev.completed ? 0.3 : 1 }} />
+                          <span key={ev.id} style={{ width: 5, height: 5, borderRadius: "50%", background: eventColor(ev), opacity: ev.completed ? 0.3 : 1 }} />
                         ))}
                       </div>
                     </button>
@@ -261,10 +359,12 @@ export default function Calendar({ companyId, role, profile, onExit, onLogout })
             <DayPanel
               date={selectedDate} dayEvents={dayEvents} showForm={showForm} setShowForm={setShowForm}
               titleRef={titleRef} typeRef={typeRef} categoryRef={categoryRef} timeRef={timeRef} assigneeRef={assigneeRef} privateRef={privateRef}
-              team={team} isBossOrAdmin={isBossOrAdmin} formError={formError} addEvent={addEvent}
+              team={rosterForForm} canPrivate={canPrivateForForm} formError={formError} addEvent={addEvent}
               toggleComplete={toggleComplete} toggleStarred={toggleStarred} removeEvent={removeEvent}
               openComments={openComments} toggleCommentsPanel={toggleCommentsPanel}
-              commentsByEvent={commentsByEvent} addComment={addComment} colorFor={colorFor} nameFor={nameFor}
+              commentsByEvent={commentsByEvent} addComment={addComment} colorFor={eventColor} nameFor={eventAssigneeName}
+              isAll={isAll} companiesMeta={companiesMeta} formCompanyId={formCompanyId} setFormCompanyId={setFormCompanyId}
+              showCompanyBadge={isAll}
             />
           </div>
         ) : (
@@ -277,7 +377,8 @@ export default function Calendar({ companyId, role, profile, onExit, onLogout })
                     toggleComplete={toggleComplete} toggleStarred={toggleStarred} removeEvent={removeEvent}
                     isOpen={!!openComments[ev.id]} onToggleComments={() => toggleCommentsPanel(ev.id)}
                     comments={commentsByEvent[ev.id] || []} addComment={addComment}
-                    colorFor={colorFor} nameFor={nameFor}
+                    colorFor={eventColor} nameFor={eventAssigneeName}
+                    companyBadge={isAll ? companiesMeta[ev.company_id] : null}
                   />
                 ))}
               </div>
@@ -290,8 +391,8 @@ export default function Calendar({ companyId, role, profile, onExit, onLogout })
 }
 
 function DayPanel({ date, dayEvents, showForm, setShowForm, titleRef, typeRef, categoryRef, timeRef, assigneeRef, privateRef,
-  team, isBossOrAdmin, formError, addEvent, toggleComplete, toggleStarred, removeEvent, openComments, toggleCommentsPanel,
-  commentsByEvent, addComment, colorFor, nameFor }){
+  team, canPrivate, formError, addEvent, toggleComplete, toggleStarred, removeEvent, openComments, toggleCommentsPanel,
+  commentsByEvent, addComment, colorFor, nameFor, isAll, companiesMeta, formCompanyId, setFormCompanyId, showCompanyBadge }){
   const label = date.toLocaleDateString("pl-PL", { weekday: "long", day: "numeric", month: "long" });
   return (
     <div style={card}>
@@ -302,8 +403,13 @@ function DayPanel({ date, dayEvents, showForm, setShowForm, titleRef, typeRef, c
 
       {showForm && (
         <div style={{ background: "#fbf9f3", borderRadius: 10, padding: 12, marginBottom: 14, display: "flex", flexDirection: "column", gap: 8 }}>
+          {isAll && (
+            <select value={formCompanyId} onChange={e => setFormCompanyId(e.target.value)} style={inputStyle}>
+              {Object.entries(companiesMeta).map(([id, name]) => <option key={id} value={id}>{name}</option>)}
+            </select>
+          )}
           <input ref={titleRef} autoFocus placeholder="Nazwa zadania lub spotkania" style={inputStyle} />
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <div className="form-row" style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
             <select ref={typeRef} defaultValue="zadanie" style={{ ...inputStyle, flex: "1 1 120px" }}>
               <option value="zadanie">Zadanie</option><option value="spotkanie">Spotkanie</option>
             </select>
@@ -312,10 +418,11 @@ function DayPanel({ date, dayEvents, showForm, setShowForm, titleRef, typeRef, c
             </select>
             <input ref={timeRef} type="time" style={{ ...inputStyle, flex: "1 1 100px" }} />
           </div>
-          <select ref={assigneeRef} defaultValue={team[0]?.profile_id || ""} style={inputStyle}>
+          <select ref={assigneeRef} defaultValue="" style={inputStyle} key={formCompanyId /* reset przy zmianie firmy */}>
+            <option value="">Cały zespół</option>
             {team.map(t => <option key={t.profile_id} value={t.profile_id}>{t.profiles?.full_name || t.profiles?.email}</option>)}
           </select>
-          {isBossOrAdmin && (
+          {canPrivate && (
             <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, color: "#5c4a1a" }}>
               <input ref={privateRef} type="checkbox" /> Prywatne — niewidoczne dla zespołu
             </label>
@@ -336,6 +443,7 @@ function DayPanel({ date, dayEvents, showForm, setShowForm, titleRef, typeRef, c
               isOpen={!!openComments[ev.id]} onToggleComments={() => toggleCommentsPanel(ev.id)}
               comments={commentsByEvent[ev.id] || []} addComment={addComment}
               colorFor={colorFor} nameFor={nameFor}
+              companyBadge={showCompanyBadge ? companiesMeta[ev.company_id] : null}
             />
           ))}
         </div>
@@ -344,10 +452,10 @@ function DayPanel({ date, dayEvents, showForm, setShowForm, titleRef, typeRef, c
   );
 }
 
-function EventRow({ ev, showDate, toggleComplete, toggleStarred, removeEvent, isOpen, onToggleComments, comments, addComment, colorFor, nameFor }){
+function EventRow({ ev, showDate, toggleComplete, toggleStarred, removeEvent, isOpen, onToggleComments, comments, addComment, colorFor, nameFor, companyBadge }){
   const meta = TYPE_META[ev.type] || TYPE_META.zadanie;
   const cat = CATEGORY_META[ev.category] || CATEGORY_META.inne;
-  const userColor = colorFor(ev.assignee_id);
+  const userColor = colorFor(ev);
   const commentRef = useRef(null);
 
   function submitComment(){
@@ -357,8 +465,8 @@ function EventRow({ ev, showDate, toggleComplete, toggleStarred, removeEvent, is
   }
 
   return (
-    <div style={{ border: "1px solid #ece7d8", borderLeft: `3px solid ${userColor}`, borderRadius: 10, padding: "10px 12px" }}>
-      <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
+    <div className="event-row" style={{ border: "1px solid #ece7d8", borderLeft: `3px solid ${userColor}`, borderRadius: 10, padding: "10px 12px" }}>
+      <div className="event-row-head" style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
         <button onClick={() => toggleComplete(ev)} style={{ background: "none", border: "none", cursor: "pointer", marginTop: 2, flexShrink: 0 }}>
           {ev.completed
             ? <div style={{ width: 18, height: 18, borderRadius: "50%", background: "#1a5c38", display: "flex", alignItems: "center", justifyContent: "center" }}><Check size={12} color="#fff" /></div>
@@ -367,6 +475,7 @@ function EventRow({ ev, showDate, toggleComplete, toggleStarred, removeEvent, is
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
             <span style={{ fontWeight: 700, fontSize: 14, textDecoration: ev.completed ? "line-through" : "none", color: ev.completed ? "#a3a698" : "#22301f" }}>{ev.title}</span>
+            {companyBadge && <span style={{ fontSize: 10.5, fontWeight: 700, color: "#fff", background: colorFor(ev), padding: "2px 7px", borderRadius: 20 }}>{companyBadge}</span>}
             <span style={{ fontSize: 10.5, fontWeight: 700, color: meta.color, background: "#f0ede2", padding: "2px 7px", borderRadius: 20 }}>{meta.label}</span>
             <span style={{ fontSize: 10.5, fontWeight: 700, color: cat.fg, background: cat.bg, padding: "2px 7px", borderRadius: 20 }}>{cat.label}</span>
             {ev.is_private && <span style={{ display: "flex", alignItems: "center", gap: 3, fontSize: 10.5, fontWeight: 700, color: "#6b6a5e", background: "#f0ede2", padding: "2px 7px", borderRadius: 20 }}><Lock size={9} /> Prywatne</span>}
@@ -374,7 +483,7 @@ function EventRow({ ev, showDate, toggleComplete, toggleStarred, removeEvent, is
           <div style={{ fontSize: 12, color: "#8b8f86", marginTop: 2, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
             {showDate && <span>{ev.event_date}</span>}
             {ev.event_time && <span>{ev.event_time.slice(0,5)}</span>}
-            {ev.assignee_id && <span style={{ display: "flex", alignItems: "center", gap: 4 }}><span style={{ width: 8, height: 8, borderRadius: "50%", background: userColor }} />{nameFor(ev.assignee_id)}</span>}
+            <span style={{ display: "flex", alignItems: "center", gap: 4 }}><span style={{ width: 8, height: 8, borderRadius: "50%", background: userColor }} />{nameFor(ev)}</span>
           </div>
         </div>
         <button onClick={() => toggleStarred(ev)} style={iconBtn} title="Oznacz jako ważne">
@@ -407,6 +516,10 @@ function TeamPanel({ companyId, team, onChanged }){
     await supabase.from("memberships").update({ role }).eq("id", membershipId);
     onChanged();
   }
+  async function changeColor(membershipId, color){
+    await supabase.from("memberships").update({ color }).eq("id", membershipId);
+    onChanged();
+  }
   async function removeMember(membershipId){
     if (!window.confirm("Usunąć tę osobę z zespołu?")) return;
     await supabase.from("memberships").delete().eq("id", membershipId);
@@ -415,11 +528,21 @@ function TeamPanel({ companyId, team, onChanged }){
   return (
     <div style={{ ...card, marginBottom: 14 }}>
       <div style={{ fontFamily: "'Fraunces', serif", fontWeight: 600, fontSize: 16, marginBottom: 10 }}>Zespół</div>
-      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
         {team.map(t => (
           <div key={t.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
-            <span style={{ fontSize: 13 }}>{t.profiles?.full_name || t.profiles?.email}</span>
-            <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+            <span style={{ fontSize: 13, display: "flex", alignItems: "center", gap: 6 }}>
+              <span style={{ width: 9, height: 9, borderRadius: "50%", background: t.color || "#6b6a5e" }} />
+              {t.profiles?.full_name || t.profiles?.email}
+            </span>
+            <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+              <div style={{ display: "flex", gap: 3 }}>
+                {USER_COLOR_PALETTE.map(c => (
+                  <button key={c} onClick={() => changeColor(t.id, c)} title={c}
+                    style={{ width: 15, height: 15, borderRadius: "50%", background: c, cursor: "pointer", padding: 0,
+                      border: (t.color || "#6b6a5e") === c ? "2px solid #22301f" : "1px solid #fff" }} />
+                ))}
+              </div>
               <select value={t.role} onChange={e => changeRole(t.id, e.target.value)} style={{ ...inputStyle, width: "auto" }}>
                 <option value="pracownik">Pracownik</option>
                 <option value="szef">Szef</option>

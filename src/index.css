@@ -1,0 +1,18 @@
+* { box-sizing: border-box; }
+body { margin: 0; font-family: 'Nunito', sans-serif; background: #f7f4ee; }
+
+@media (max-width: 640px) {
+  .app-shell { padding: 14px 8px 40px !important; }
+  .day-grid-cell { min-height: 46px !important; padding: 3px !important; }
+  .event-row { padding: 8px 9px !important; }
+  .event-row-head { gap: 6px !important; }
+  .form-row { gap: 6px !important; }
+  .top-header { gap: 10px !important; }
+  .top-header-title { font-size: 19px !important; }
+  .toolbar-row button { padding: 7px 10px !important; font-size: 12px !important; }
+}
+
+@media (max-width: 420px) {
+  .day-grid-cell { min-height: 38px !important; }
+  .event-row-head { flex-wrap: wrap !important; }
+}

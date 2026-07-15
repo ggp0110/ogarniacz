@@ -1,9 +1,9 @@
 import React, { useEffect, useRef, useState, useCallback } from "react";
 import { supabase } from "../supabaseClient";
-import { pageWrap, card, inputStyle, saveBtn, addBtn, tabStyle, colorForIndex } from "../theme";
-import { Building2, Plus, LogOut, UserPlus, ArrowRight, Loader2, Mail } from "lucide-react";
+import { pageWrap, card, inputStyle, saveBtn, addBtn, tabStyle, USER_COLOR_PALETTE } from "../theme";
+import { Building2, Plus, LogOut, UserPlus, ArrowRight, Loader2, Mail, LayoutGrid } from "lucide-react";
 
-export default function SuperAdminHome({ profile, onEnterCompany, onLogout }){
+export default function SuperAdminHome({ profile, onEnterCompany, onEnterAll, onLogout }){
   const [companies, setCompanies] = useState([]);
   const [memberships, setMemberships] = useState([]);
   const [profiles, setProfiles] = useState([]);
@@ -21,7 +21,7 @@ export default function SuperAdminHome({ profile, onEnterCompany, onLogout }){
     setError("");
     const [{ data: comp, error: e1 }, { data: mem, error: e2 }, { data: profs, error: e3 }] = await Promise.all([
       supabase.from("companies").select("*").order("name"),
-      supabase.from("memberships").select("id, role, company_id, profile_id, profiles ( id, full_name, email )"),
+      supabase.from("memberships").select("id, role, color, company_id, profile_id, profiles ( id, full_name, email )"),
       supabase.from("profiles").select("*").order("email"),
     ]);
     if (e1 || e2 || e3) setError((e1||e2||e3).message);
@@ -63,13 +63,18 @@ export default function SuperAdminHome({ profile, onEnterCompany, onLogout }){
     loadAll();
   }
 
+  async function setMemberColor(id, color){
+    await supabase.from("memberships").update({ color }).eq("id", id);
+    loadAll();
+  }
+
   if (loading) {
     return <div style={{ ...pageWrap, display: "flex", alignItems: "center", justifyContent: "center", gap: 8, color: "#8b8f86" }}><Loader2 size={18} /> Wczytywanie…</div>;
   }
 
   return (
     <div style={pageWrap}>
-      <div style={{ maxWidth: 900, margin: "0 auto", padding: "28px 18px 60px" }}>
+      <div className="app-shell" style={{ maxWidth: 900, margin: "0 auto", padding: "28px 18px 60px" }}>
         <header style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20, flexWrap: "wrap", gap: 10 }}>
           <div>
             <div style={{ fontFamily: "'Fraunces', serif", fontWeight: 700, fontSize: 26, color: "#1a5c38" }}>Panel administratora</div>
@@ -91,9 +96,12 @@ export default function SuperAdminHome({ profile, onEnterCompany, onLogout }){
           </div>
         </div>
 
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10, flexWrap: "wrap", gap: 8 }}>
           <div style={{ fontFamily: "'Fraunces', serif", fontWeight: 600, fontSize: 18 }}>Firmy</div>
-          <button onClick={() => setShowAddCompany(s => !s)} style={addBtn}><Plus size={15} style={{ marginRight: 4 }} /> Dodaj firmę</button>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button onClick={onEnterAll} style={tabStyle(false)}><LayoutGrid size={15} style={{ marginRight: 6 }} /> Wszystkie razem</button>
+            <button onClick={() => setShowAddCompany(s => !s)} style={addBtn}><Plus size={15} style={{ marginRight: 4 }} /> Dodaj firmę</button>
+          </div>
         </div>
 
         {showAddCompany && (
@@ -109,7 +117,7 @@ export default function SuperAdminHome({ profile, onEnterCompany, onLogout }){
             const members = memberships.filter(m => m.company_id === c.id);
             return (
               <div key={c.id} style={card}>
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8, flexWrap: "wrap", gap: 8 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                     <Building2 size={16} color="#1a5c38" />
                     <span style={{ fontWeight: 700 }}>{c.name}</span>
@@ -121,11 +129,26 @@ export default function SuperAdminHome({ profile, onEnterCompany, onLogout }){
                 {members.length === 0 ? (
                   <div style={{ fontSize: 12.5, color: "#8b8f86" }}>Brak przypisanych osób.</div>
                 ) : (
-                  <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                     {members.map(m => (
-                      <div key={m.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", fontSize: 13 }}>
-                        <span>{m.profiles?.full_name || m.profiles?.email} <span style={{ color: "#8b8f86", fontSize: 11 }}>({m.role})</span></span>
-                        <button onClick={() => removeMembership(m.id)} style={{ background: "none", border: "none", color: "#9a3b34", cursor: "pointer", fontSize: 11.5 }}>Usuń</button>
+                      <div key={m.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", fontSize: 13, flexWrap: "wrap", gap: 6 }}>
+                        <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                          <span style={{ width: 9, height: 9, borderRadius: "50%", background: m.color || "#6b6a5e", display: "inline-block" }} />
+                          {m.profiles?.full_name || m.profiles?.email} <span style={{ color: "#8b8f86", fontSize: 11 }}>({m.role})</span>
+                        </span>
+                        <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                          <div style={{ display: "flex", gap: 3 }}>
+                            {USER_COLOR_PALETTE.map(c => (
+                              <button key={c} onClick={() => setMemberColor(m.id, c)} title={c}
+                                style={{
+                                  width: 16, height: 16, borderRadius: "50%", background: c, cursor: "pointer",
+                                  border: (m.color || "#6b6a5e") === c ? "2px solid #22301f" : "1px solid #fff",
+                                  padding: 0,
+                                }} />
+                            ))}
+                          </div>
+                          <button onClick={() => removeMembership(m.id)} style={{ background: "none", border: "none", color: "#9a3b34", cursor: "pointer", fontSize: 11.5 }}>Usuń</button>
+                        </div>
                       </div>
                     ))}
                   </div>

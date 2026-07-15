@@ -1,8 +1,8 @@
 import React from "react";
 import { pageWrap, card } from "../theme";
-import { Building2, LogOut } from "lucide-react";
+import { Building2, LogOut, LayoutGrid } from "lucide-react";
 
-export default function CompanyPicker({ memberships, onPick, onLogout }){
+export default function CompanyPicker({ memberships, onPick, onPickAll, onLogout }){
   return (
     <div style={{ ...pageWrap, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
       <div style={{ ...card, width: "100%", maxWidth: 420 }}>
@@ -13,6 +13,14 @@ export default function CompanyPicker({ memberships, onPick, onLogout }){
           </button>
         </div>
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          <button onClick={onPickAll}
+            style={{ display: "flex", alignItems: "center", gap: 10, textAlign: "left", border: "1px solid #1a5c38", borderRadius: 10, padding: "12px 14px", background: "#e7efe9", cursor: "pointer" }}>
+            <LayoutGrid size={16} color="#1a5c38" />
+            <div>
+              <div style={{ fontWeight: 700, fontSize: 14, color: "#1a5c38" }}>Wszystkie firmy razem</div>
+              <div style={{ fontSize: 11.5, color: "#4a6f57" }}>Wspólny kalendarz ze wszystkich Twoich firm</div>
+            </div>
+          </button>
           {memberships.map(m => (
             <button key={m.company_id} onClick={() => onPick(m.company_id)}
               style={{ display: "flex", alignItems: "center", gap: 10, textAlign: "left", border: "1px solid #ece7d8", borderRadius: 10, padding: "12px 14px", background: "#fbf9f3", cursor: "pointer" }}>
