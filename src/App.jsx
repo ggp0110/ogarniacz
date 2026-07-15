@@ -9,13 +9,25 @@ import Calendar from "./pages/Calendar.jsx";
 import { Loader2 } from "lucide-react";
 
 // Sprawdzamy hash URL NATYCHMIAST (zanim Supabase go przetworzy i wyczyści),
-// żeby niezawodnie wykryć link z zaproszenia lub resetu hasła.
+// żeby niezawodnie wykryć link z zaproszenia lub resetu hasła — oraz wykryć,
+// czy link jest wygasły/nieprawidłowy, żeby pokazać jasny komunikat zamiast
+// cichego "spadnięcia" na zwykły ekran logowania.
 const initialHash = typeof window !== "undefined" ? window.location.hash : "";
 const cameFromInviteOrRecovery = /type=invite|type=recovery/.test(initialHash);
+function parseLinkError(hash){
+  if (!hash || !hash.includes("error=")) return "";
+  const params = new URLSearchParams(hash.replace(/^#/, ""));
+  const code = params.get("error_code");
+  if (code === "otp_expired") return "Ten link zaproszenia/resetu hasła wygasł. Poproś administratora o wysłanie nowego zaproszenia.";
+  const desc = params.get("error_description");
+  return desc ? decodeURIComponent(desc.replace(/\+/g, " ")) : "Link jest nieprawidłowy lub już wykorzystany. Poproś o nowe zaproszenie.";
+}
+const initialLinkError = parseLinkError(initialHash);
 
 export default function App(){
   const [session, setSession] = useState(undefined); // undefined = jeszcze nie wiadomo, null = brak
   const [needsPassword, setNeedsPassword] = useState(cameFromInviteOrRecovery);
+  const [linkError] = useState(initialLinkError);
   const [profile, setProfile] = useState(null);
   const [memberships, setMemberships] = useState([]);
   const [loadingProfile, setLoadingProfile] = useState(false);
@@ -76,7 +88,7 @@ export default function App(){
   }
 
   if (!session) {
-    return <Login />;
+    return <Login linkError={linkError} />;
   }
 
   if (loadingProfile || !profile) {
