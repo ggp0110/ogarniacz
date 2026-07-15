@@ -1,0 +1,68 @@
+// INSTRUKCJA KONFIGURACJI SYSTEMU PRZYPOMNIEŃ
+// Wykonaj kroki poniżej w tej kolejności
+
+// ============================================
+// KROK 1: MIGRACJA BAZY DANYCH
+// ============================================
+// 1. Przejdź do: https://supabase.com/dashboard
+// 2. Wybierz swój projekt
+// 3. Kliknij "SQL Editor" na lewym panelu
+// 4. Kliknij "New Query"
+// 5. Wklej zawartość pliku: MIGRATION_REMINDERS.sql
+// 6. Kliknij "Run" (Ctrl+Enter)
+
+// ============================================
+// KROK 2: ZMIENNE ŚRODOWISKOWE
+// ============================================
+// 1. Przejdź do: https://supabase.com/dashboard
+// 2. Wybierz swój projekt
+// 3. Kliknij "Settings" -> "Edge Functions"
+// 4. Przewiń do "Edge Function secrets"
+// 5. Kliknij "Add new secret"
+// 6. Dodaj te zmienne:
+
+// Zmienna 1:
+// Name: RESEND_API_KEY
+// Value: re_V3EydXAV_DPv9QaZVkDiqKdUABwcMDk7C
+
+// Zmienna 2:
+// Name: SUPABASE_URL
+// Value: [Twoja SUPABASE_URL - przejdź do Settings -> API]
+
+// Zmienna 3:
+// Name: SUPABASE_SERVICE_ROLE_KEY
+// Value: [Twój SUPABASE_SERVICE_ROLE_KEY - przejdź do Settings -> API]
+
+// ============================================
+// KROK 3: DEPLOY EDGE FUNCTION
+// ============================================
+// 1. Przejdź do: https://supabase.com/dashboard
+// 2. Wybierz swój projekt
+// 3. Kliknij "Edge Functions" na lewym panelu
+// 4. Kliknij "Create a new Function"
+// 5. Nazwa: send-reminders
+// 6. Wklej zawartość pliku: supabase/functions/send-reminders/index.ts
+// 7. Kliknij "Deploy"
+
+// ============================================
+// KROK 4: GITHUB ACTIONS - CRON JOB
+// ============================================
+// 1. W swoim repo GitHub
+// 2. Utwórz plik: .github/workflows/send-reminders.yml
+// 3. Wklej zawartość z pliku: GITHUB_ACTION_CRON.yml
+// 4. Commit i push
+
+// ============================================
+// KROK 5: INTEGRACJA W APLIKACJI
+// ============================================
+// Już wdrażam... czekaj na kolejny commit!
+
+// ============================================
+// ZMIENNE DOSTĘPU DO SUPABASE
+// ============================================
+// Znajdziesz je tutaj:
+// 1. Idź do: https://supabase.com/dashboard
+// 2. Wybierz projekt
+// 3. Settings -> API
+// 4. Project URL = SUPABASE_URL
+// 5. Project API keys -> Service role secret = SUPABASE_SERVICE_ROLE_KEY
