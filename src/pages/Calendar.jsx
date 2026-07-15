@@ -17,6 +17,25 @@ function buildMonthGrid(year, month){
   for(let i=0;i<42;i++){ const d = new Date(gridStart); d.setDate(gridStart.getDate()+i); cells.push(d); }
   return cells;
 }
+
+function getWeekStart(date) {
+  const d = new Date(date);
+  const day = d.getDay();
+  const diff = d.getDate() - (day === 0 ? 6 : day - 1);
+  return new Date(d.setDate(diff));
+}
+
+function buildWeekGrid(date) {
+  const start = getWeekStart(date);
+  const week = [];
+  for(let i = 0; i < 7; i++) {
+    const d = new Date(start);
+    d.setDate(start.getDate() + i);
+    week.push(d);
+  }
+  return week;
+}
+
 const MONTHS_PL = ["Styczeń","Luty","Marzec","Kwiecień","Maj","Czerwiec","Lipiec","Sierpień","Wrzesień","Październik","Listopad","Grudzień"];
 const DAYS_PL = ["Pon","Wt","Śr","Czw","Pt","Sob","Nd"];
 
@@ -59,7 +78,7 @@ export default function Calendar({ companyId, role, profile, onExit, onLogout })
 
   // --- kolory i nazwy: tryb pojedynczej firmy (po osobie) ---
   const colorFor = useCallback((profileId) => {
-    if (!profileId) return "#1a5c38";
+    if (!profileId) return "#8b2e4a";
     const t = team.find(t => t.profile_id === profileId);
     if (t?.color) return t.color;
     const idx = team.findIndex(t => t.profile_id === profileId);
@@ -193,6 +212,7 @@ export default function Calendar({ companyId, role, profile, onExit, onLogout })
   const year = cursor.getFullYear();
   const month = cursor.getMonth();
   const grid = useMemo(() => buildMonthGrid(year, month), [year, month]);
+  const week = useMemo(() => buildWeekGrid(cursor), [cursor]);
 
   const eventsByDay = useMemo(() => {
     const map = {};
@@ -266,14 +286,14 @@ export default function Calendar({ companyId, role, profile, onExit, onLogout })
           <div>
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
               {onExit && <button onClick={onExit} style={iconBtn} title="Wróć"><ArrowLeft size={16} /></button>}
-              {isAll ? <LayoutGrid size={16} color="#1a5c38" /> : <Building2 size={16} color="#1a5c38" />}
-              <span className="top-header-title" style={{ fontFamily: "'Fraunces', serif", fontWeight: 700, fontSize: 22, color: "#1a5c38" }}>
+              {isAll ? <LayoutGrid size={16} color="#8b2e4a" /> : <Building2 size={16} color="#8b2e4a" />}
+              <span className="top-header-title" style={{ fontFamily: "'Fraunces', serif", fontWeight: 700, fontSize: 22, color: "#8b2e4a" }}>
                 {isAll ? "Wszystkie firmy" : (companyName || "Kalendarz")}
               </span>
             </div>
             <div style={{ fontSize: 12, color: "#8b8f86", marginTop: 2, display: "flex", alignItems: "center", gap: 6 }}>
               <Users size={12} /> {profile.full_name || profile.email}
-              {isBossSomewhere && <span style={{ fontSize: 10, fontWeight: 800, color: "#1a5c38", background: "#e7efe9", padding: "1px 7px", borderRadius: 20 }}>SZEF</span>}
+              {isBossSomewhere && <span style={{ fontSize: 10, fontWeight: 800, color: "#fff", background: "#8b2e4a", padding: "1px 7px", borderRadius: 20 }}>SZEF</span>}
             </div>
           </div>
           <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
@@ -281,8 +301,9 @@ export default function Calendar({ companyId, role, profile, onExit, onLogout })
               <button onClick={() => setShowTeamPanel(s => !s)} style={tabStyle(showTeamPanel)}><Settings size={15} style={{ marginRight: 6 }} /> Zespół</button>
             )}
             <button onClick={() => setView("miesiac")} style={tabStyle(view === "miesiac")}><CalendarDays size={15} style={{ marginRight: 6 }} /> Miesiąc</button>
+            <button onClick={() => setView("tydzien")} style={tabStyle(view === "tydzien")}><CalendarDays size={15} style={{ marginRight: 6 }} /> Tydzień</button>
             <button onClick={() => setView("lista")} style={tabStyle(view === "lista")}><ListChecks size={15} style={{ marginRight: 6 }} /> Lista</button>
-            <button onClick={onLogout} style={{ ...iconBtn, border: "1px solid #e2ded1", borderRadius: 8 }} title="Wyloguj"><LogOut size={15} /></button>
+            <button onClick={onLogout} style={{ ...iconBtn, border: "1px solid #d4c4b0", borderRadius: 8 }} title="Wyloguj"><LogOut size={15} /></button>
           </div>
         </header>
 
@@ -352,13 +373,13 @@ export default function Calendar({ companyId, role, profile, onExit, onLogout })
                   const hasStarred = dayList.some(e => e.starred && !e.completed);
                   return (
                     <button key={i} onClick={() => setSelectedDate(d)} className="day-grid-cell" style={{
-                      border: isSelected ? "2px solid #1a5c38" : "1px solid #ece7d8",
+                      border: isSelected ? "2px solid #8b2e4a" : "1px solid #d4c4b0",
                       background: isToday ? "#fbf7ec" : "#fff", borderRadius: 9, minHeight: 56, padding: 5,
                       textAlign: "left", cursor: "pointer", opacity: inMonth ? 1 : 0.35, display: "flex", flexDirection: "column", gap: 3,
                     }}>
-                      <span style={{ fontSize: 12, fontWeight: isToday ? 800 : 600, color: isToday ? "#1a5c38" : "#22301f" }}>{d.getDate()}</span>
-                      {allDone && <Check size={10} color="#1a5c38" />}
-                      {hasStarred && <Star size={9} fill="#c9a84c" color="#c9a84c" />}
+                      <span style={{ fontSize: 12, fontWeight: isToday ? 800 : 600, color: isToday ? "#8b2e4a" : "#22301f" }}>{d.getDate()}</span>
+                      {allDone && <Check size={10} color="#8b2e4a" />}
+                      {hasStarred && <Star size={9} fill="#f0c300" color="#f0c300" />}
                       <div style={{ display: "flex", gap: 3, flexWrap: "wrap" }}>
                         {dayList.slice(0,3).map(ev => (
                           <span key={ev.id} style={{ width: 5, height: 5, borderRadius: "50%", background: eventColor(ev), opacity: ev.completed ? 0.3 : 1 }} />
@@ -380,6 +401,51 @@ export default function Calendar({ companyId, role, profile, onExit, onLogout })
               isAll={isAll} companiesMeta={companiesMeta} formCompanyId={formCompanyId} setFormCompanyId={setFormCompanyId}
               showCompanyBadge={isAll}
             />
+          </div>
+        ) : view === "tydzien" ? (
+          <div style={card}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
+              <button onClick={() => setCursor(new Date(cursor.getTime() - 7 * 24 * 60 * 60 * 1000))} style={iconBtn}><ChevronLeft size={18} /></button>
+              <div style={{ fontFamily: "'Fraunces', serif", fontWeight: 600, fontSize: 17 }}>
+                Tydzień: {toKey(week[0])} – {toKey(week[6])}
+              </div>
+              <button onClick={() => setCursor(new Date(cursor.getTime() + 7 * 24 * 60 * 60 * 1000))} style={iconBtn}><ChevronRight size={18} /></button>
+            </div>
+
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 8, marginBottom: 14 }}>
+              {week.map((d, i) => {
+                const key = toKey(d);
+                const dayList = eventsByDay[key] || [];
+                const isToday = sameDay(d, new Date());
+                return (
+                  <div key={i} style={{ background: isToday ? "#fef3d4" : "#fff", border: `1px solid ${isToday ? "#f0c300" : "#d4c4b0"}`, borderRadius: 10, padding: 12, minHeight: 200 }}>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: isToday ? "#f0c300" : "#8b8f86", marginBottom: 8, textTransform: "uppercase" }}>
+                      {DAYS_PL[d.getDay() === 0 ? 6 : d.getDay() - 1]} {d.getDate()}
+                    </div>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                      {dayList.length === 0 ? (
+                        <div style={{ color: "#b0a89a", fontSize: 12, fontStyle: "italic" }}>Brak zdarzeń</div>
+                      ) : (
+                        dayList.map(ev => (
+                          <div key={ev.id} onClick={() => { setSelectedDate(d); setView("miesiac"); }} style={{
+                            background: "#f9f6f0", border: `2px solid ${eventColor(ev)}`, borderRadius: 8, padding: 8, cursor: "pointer",
+                            fontSize: 11.5, color: ev.completed ? "#a3a698" : "#22301f", textDecoration: ev.completed ? "line-through" : "none",
+                            opacity: ev.completed ? 0.6 : 1
+                          }}>
+                            <div style={{ fontWeight: 700, marginBottom: 2 }}>{ev.title}</div>
+                            {ev.event_time && <div style={{ fontSize: 10.5, color: "#8b8f86" }}>{ev.event_time.slice(0,5)}</div>}
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            <button onClick={() => { setSelectedDate(new Date()); setShowForm(true); setView("miesiac"); }} style={addBtn}>
+              <Plus size={15} style={{ marginRight: 4 }} /> Dodaj zdarzenie
+            </button>
           </div>
         ) : (
           <div style={card}>
@@ -479,11 +545,11 @@ function EventRow({ ev, showDate, toggleComplete, toggleStarred, removeEvent, is
   }
 
   return (
-    <div className="event-row" style={{ border: "1px solid #ece7d8", borderLeft: `3px solid ${userColor}`, borderRadius: 10, padding: "10px 12px" }}>
+    <div className="event-row" style={{ border: "1px solid #d4c4b0", borderLeft: `3px solid ${userColor}`, borderRadius: 10, padding: "10px 12px" }}>
       <div className="event-row-head" style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
         <button onClick={() => toggleComplete(ev)} style={{ background: "none", border: "none", cursor: "pointer", marginTop: 2, flexShrink: 0 }}>
           {ev.completed
-            ? <div style={{ width: 18, height: 18, borderRadius: "50%", background: "#1a5c38", display: "flex", alignItems: "center", justifyContent: "center" }}><Check size={12} color="#fff" /></div>
+            ? <div style={{ width: 18, height: 18, borderRadius: "50%", background: "#8b2e4a", display: "flex", alignItems: "center", justifyContent: "center" }}><Check size={12} color="#fff" /></div>
             : <div style={{ width: 18, height: 18, borderRadius: "50%", border: "2px solid #cfcabb" }} />}
         </button>
         <div style={{ flex: 1, minWidth: 0 }}>
@@ -501,7 +567,7 @@ function EventRow({ ev, showDate, toggleComplete, toggleStarred, removeEvent, is
           </div>
         </div>
         <button onClick={() => toggleStarred(ev)} style={iconBtn} title="Oznacz jako ważne">
-          <Star size={15} fill={ev.starred ? "#c9a84c" : "none"} color={ev.starred ? "#c9a84c" : "#8b8f86"} />
+          <Star size={15} fill={ev.starred ? "#f0c300" : "none"} color={ev.starred ? "#f0c300" : "#8b8f86"} />
         </button>
         <button onClick={onToggleComments} style={iconBtn}><MessageCircle size={14} /> {comments.length > 0 && <span style={{ fontSize: 11 }}>{comments.length}</span>}</button>
         <button onClick={() => removeEvent(ev.id)} style={iconBtn}><X size={14} /></button>
