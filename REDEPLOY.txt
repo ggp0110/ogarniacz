@@ -1,0 +1,2 @@
+// Trigger redeploy na Vercel
+// Ostatnia zmiana: auto-redeploy
