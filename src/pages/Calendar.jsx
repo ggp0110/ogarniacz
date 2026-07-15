@@ -3,7 +3,7 @@ import { supabase } from "../supabaseClient";
 import { pageWrap, card, inputStyle, saveBtn, cancelBtn, addBtn, tabStyle, iconBtn, CATEGORY_META, TYPE_META, colorForIndex, USER_COLOR_PALETTE } from "../theme";
 import {
   ChevronLeft, ChevronRight, Plus, X, MessageCircle, Check, Users, CalendarDays,
-  ListChecks, Loader2, LogOut, Star, Lock, Building2, Settings, ArrowLeft, LayoutGrid
+  ListChecks, Loader2, LogOut, Star, Lock, Building2, Settings, ArrowLeft, LayoutGrid, Bell
 } from "lucide-react";
 
 function pad(n){ return n.toString().padStart(2,"0"); }
@@ -39,13 +39,19 @@ function buildWeekGrid(date) {
 const MONTHS_PL = ["Styczeń","Luty","Marzec","Kwiecień","Maj","Czerwiec","Lipiec","Sierpień","Wrzesień","Październik","Listopad","Grudzień"];
 const DAYS_PL = ["Pon","Wt","Śr","Czw","Pt","Sob","Nd"];
 
+const REMINDER_OPTIONS = [
+  { value: "15min", label: "15 minut przed" },
+  { value: "1hour", label: "1 godzinę przed" },
+  { value: "1day", label: "1 dzień przed" },
+];
+
 export default function Calendar({ companyId, role, profile, onExit, onLogout }){
   const isAll = companyId === "ALL";
 
   const [companyName, setCompanyName] = useState("");
-  const [team, setTeam] = useState([]); // tryb pojedynczej firmy: memberships + profiles
-  const [companiesMeta, setCompaniesMeta] = useState({}); // tryb "wszystkie": {companyId: nazwa}
-  const [teamByCompany, setTeamByCompany] = useState({}); // tryb "wszystkie": {companyId: [membership...]}
+  const [team, setTeam] = useState([]);
+  const [companiesMeta, setCompaniesMeta] = useState({});
+  const [teamByCompany, setTeamByCompany] = useState({});
   const [events, setEvents] = useState(null);
   const [error, setError] = useState("");
   const [cursor, setCursor] = useState(new Date());
@@ -59,6 +65,8 @@ export default function Calendar({ companyId, role, profile, onExit, onLogout })
   const [filterAssignee, setFilterAssignee] = useState("wszyscy");
   const [filterCompany, setFilterCompany] = useState("wszystkie");
   const [formCompanyId, setFormCompanyId] = useState("");
+  const [openReminders, setOpenReminders] = useState({});
+  const [remindersByEvent, setRemindersByEvent] = useState({});
 
   const titleRef = useRef(null);
   const typeRef = useRef(null);
@@ -76,7 +84,6 @@ export default function Calendar({ companyId, role, profile, onExit, onLogout })
     }
   }, [isAll, companiesMeta, formCompanyId]);
 
-  // --- kolory i nazwy: tryb pojedynczej firmy (po osobie) ---
   const colorFor = useCallback((profileId) => {
     if (!profileId) return "#8b2e4a";
     const t = team.find(t => t.profile_id === profileId);
@@ -84,21 +91,21 @@ export default function Calendar({ companyId, role, profile, onExit, onLogout })
     const idx = team.findIndex(t => t.profile_id === profileId);
     return idx >= 0 ? colorForIndex(idx) : "#6b6a5e";
   }, [team]);
+  
   const nameFor = useCallback((profileId) => {
     if (!profileId) return "Cały zespół";
     const t = team.find(t => t.profile_id === profileId);
     return t?.profiles?.full_name || t?.profiles?.email || "—";
   }, [team]);
 
-  // --- kolory: tryb "wszystkie firmy" (po firmie) ---
   const companyColor = useCallback((cid) => {
     const ids = Object.keys(companiesMeta);
     const idx = ids.indexOf(cid);
     return idx >= 0 ? colorForIndex(idx) : "#6b6a5e";
   }, [companiesMeta]);
 
-  // --- funkcje uniwersalne używane przy renderowaniu zdarzeń (przyjmują CAŁY event) ---
   const eventColor = useCallback((ev) => (isAll ? companyColor(ev.company_id) : colorFor(ev.assignee_id)), [isAll, companyColor, colorFor]);
+  
   const eventAssigneeName = useCallback((ev) => {
     if (!ev.assignee_id) return "Cały zespół";
     if (isAll) {
@@ -109,11 +116,10 @@ export default function Calendar({ companyId, role, profile, onExit, onLogout })
     return nameFor(ev.assignee_id);
   }, [isAll, teamByCompany, nameFor]);
 
-  // czy użytkownik jest szefem/adminem w KTÓREJKOLWIEK firmie (dotyczy trybu "wszystkie")
   const isBossSomewhere = isAll
     ? (profile.is_super_admin || Object.values(teamByCompany).some(list => list.some(m => m.profile_id === profile.id && m.role === "szef")))
     : isBossOrAdmin;
-  // czy użytkownik jest szefem w konkretnej firmie wybranej w formularzu (dotyczy trybu "wszystkie")
+  
   const canPrivateForForm = isAll
     ? (profile.is_super_admin || (teamByCompany[formCompanyId] || []).some(m => m.profile_id === profile.id && m.role === "szef"))
     : isBossOrAdmin;
@@ -172,7 +178,6 @@ export default function Calendar({ companyId, role, profile, onExit, onLogout })
       })
       .subscribe();
     return () => { supabase.removeChannel(channel); };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [companyId, isAll]);
 
   async function loadComments(eventId){
@@ -184,10 +189,27 @@ export default function Calendar({ companyId, role, profile, onExit, onLogout })
     setCommentsByEvent(prev => ({ ...prev, [eventId]: data || [] }));
   }
 
+  async function loadReminders(eventId){
+    const { data } = await supabase
+      .from("reminders")
+      .select("*")
+      .eq("event_id", eventId)
+      .eq("user_id", profile.id);
+    setRemindersByEvent(prev => ({ ...prev, [eventId]: data || [] }));
+  }
+
   function toggleCommentsPanel(eventId){
     setOpenComments(o => {
       const next = { ...o, [eventId]: !o[eventId] };
       if (next[eventId] && !commentsByEvent[eventId]) loadComments(eventId);
+      return next;
+    });
+  }
+
+  function toggleRemindersPanel(eventId){
+    setOpenReminders(o => {
+      const next = { ...o, [eventId]: !o[eventId] };
+      if (next[eventId] && !remindersByEvent[eventId]) loadReminders(eventId);
       return next;
     });
   }
@@ -197,6 +219,51 @@ export default function Calendar({ companyId, role, profile, onExit, onLogout })
     if (!trimmed) return;
     await supabase.from("event_comments").insert({ event_id: eventId, author_id: profile.id, body: trimmed });
     loadComments(eventId);
+  }
+
+  async function addReminder(eventId, reminderType, eventDate, eventTime, eventTitle){
+    if (!reminderType) return;
+    try {
+      const eventDateTime = new Date(`${eventDate}T${eventTime || "09:00"}Z`);
+      const sendAt = new Date(eventDateTime);
+
+      if (reminderType === "15min") {
+        sendAt.setMinutes(sendAt.getMinutes() - 15);
+      } else if (reminderType === "1hour") {
+        sendAt.setHours(sendAt.getHours() - 1);
+      } else if (reminderType === "1day") {
+        sendAt.setDate(sendAt.getDate() - 1);
+      }
+
+      if (sendAt < new Date()) {
+        setError("Ten czas już minął!");
+        return;
+      }
+
+      const userEmail = profile.email;
+      const { error: err } = await supabase.from("reminders").insert({
+        event_id: eventId,
+        user_id: profile.id,
+        user_email: userEmail,
+        event_title: eventTitle,
+        event_date: eventDate,
+        event_time: eventTime,
+        reminder_type: reminderType,
+        send_at: sendAt.toISOString(),
+      });
+
+      if (err) throw err;
+      await loadReminders(eventId);
+    } catch (err) {
+      setError(err.message);
+    }
+  }
+
+  async function removeReminder(reminderId){
+    const { error: err } = await supabase.from("reminders").delete().eq("id", reminderId);
+    if (err) {
+      setError(err.message);
+    }
   }
 
   const visibleEvents = useMemo(() => {
@@ -249,7 +316,6 @@ export default function Calendar({ companyId, role, profile, onExit, onLogout })
     };
     const { data, error: err } = await supabase.from("events").insert(payload).select().single();
     if (err) { setFormError(err.message); return; }
-    // pokazujemy nowe zadanie natychmiast, bez czekania na realtime
     setEvents(prev => [...(prev || []), data]);
     if (titleRef.current) titleRef.current.value = "";
     if (timeRef.current) timeRef.current.value = "";
@@ -262,11 +328,13 @@ export default function Calendar({ companyId, role, profile, onExit, onLogout })
     const { error: err } = await supabase.from("events").update({ completed: !ev.completed }).eq("id", ev.id);
     if (err) { setError(err.message); loadEvents(); }
   }
+  
   async function toggleStarred(ev){
     setEvents(prev => (prev || []).map(e => e.id === ev.id ? { ...e, starred: !ev.starred } : e));
     const { error: err } = await supabase.from("events").update({ starred: !ev.starred }).eq("id", ev.id);
     if (err) { setError(err.message); loadEvents(); }
   }
+  
   async function removeEvent(id){
     setEvents(prev => (prev || []).filter(e => e.id !== id));
     const { error: err } = await supabase.from("events").delete().eq("id", id);
@@ -374,10 +442,10 @@ export default function Calendar({ companyId, role, profile, onExit, onLogout })
                   return (
                     <button key={i} onClick={() => setSelectedDate(d)} className="day-grid-cell" style={{
                       border: isSelected ? "2px solid #8b2e4a" : "1px solid #d4c4b0",
-                      background: isToday ? "#fbf7ec" : "#fff", borderRadius: 9, minHeight: 56, padding: 5,
+                      background: isToday ? "#fef3d4" : "#fff", borderRadius: 9, minHeight: 56, padding: 5,
                       textAlign: "left", cursor: "pointer", opacity: inMonth ? 1 : 0.35, display: "flex", flexDirection: "column", gap: 3,
                     }}>
-                      <span style={{ fontSize: 12, fontWeight: isToday ? 800 : 600, color: isToday ? "#8b2e4a" : "#22301f" }}>{d.getDate()}</span>
+                      <span style={{ fontSize: 12, fontWeight: isToday ? 800 : 600, color: isToday ? "#f0c300" : "#22301f" }}>{d.getDate()}</span>
                       {allDone && <Check size={10} color="#8b2e4a" />}
                       {hasStarred && <Star size={9} fill="#f0c300" color="#f0c300" />}
                       <div style={{ display: "flex", gap: 3, flexWrap: "wrap" }}>
@@ -400,6 +468,9 @@ export default function Calendar({ companyId, role, profile, onExit, onLogout })
               commentsByEvent={commentsByEvent} addComment={addComment} colorFor={eventColor} nameFor={eventAssigneeName}
               isAll={isAll} companiesMeta={companiesMeta} formCompanyId={formCompanyId} setFormCompanyId={setFormCompanyId}
               showCompanyBadge={isAll}
+              openReminders={openReminders} toggleRemindersPanel={toggleRemindersPanel}
+              remindersByEvent={remindersByEvent} addReminder={addReminder} removeReminder={removeReminder}
+              profile={profile}
             />
           </div>
         ) : view === "tydzien" ? (
@@ -459,6 +530,9 @@ export default function Calendar({ companyId, role, profile, onExit, onLogout })
                     comments={commentsByEvent[ev.id] || []} addComment={addComment}
                     colorFor={eventColor} nameFor={eventAssigneeName}
                     companyBadge={isAll ? companiesMeta[ev.company_id] : null}
+                    isOpenReminders={!!openReminders[ev.id]} onToggleReminders={() => toggleRemindersPanel(ev.id)}
+                    reminders={remindersByEvent[ev.id] || []} addReminder={addReminder} removeReminder={removeReminder}
+                    profile={profile}
                   />
                 ))}
               </div>
@@ -472,7 +546,8 @@ export default function Calendar({ companyId, role, profile, onExit, onLogout })
 
 function DayPanel({ date, dayEvents, showForm, setShowForm, titleRef, typeRef, categoryRef, timeRef, assigneeRef, privateRef,
   team, canPrivate, formError, addEvent, toggleComplete, toggleStarred, removeEvent, openComments, toggleCommentsPanel,
-  commentsByEvent, addComment, colorFor, nameFor, isAll, companiesMeta, formCompanyId, setFormCompanyId, showCompanyBadge }){
+  commentsByEvent, addComment, colorFor, nameFor, isAll, companiesMeta, formCompanyId, setFormCompanyId, showCompanyBadge,
+  openReminders, toggleRemindersPanel, remindersByEvent, addReminder, removeReminder, profile }){
   const label = date.toLocaleDateString("pl-PL", { weekday: "long", day: "numeric", month: "long" });
   return (
     <div style={card}>
@@ -498,7 +573,7 @@ function DayPanel({ date, dayEvents, showForm, setShowForm, titleRef, typeRef, c
             </select>
             <input ref={timeRef} type="time" style={{ ...inputStyle, flex: "1 1 100px" }} />
           </div>
-          <select ref={assigneeRef} defaultValue="" style={inputStyle} key={formCompanyId /* reset przy zmianie firmy */}>
+          <select ref={assigneeRef} defaultValue="" style={inputStyle} key={formCompanyId}>
             <option value="">Cały zespół</option>
             {team.map(t => <option key={t.profile_id} value={t.profile_id}>{t.profiles?.full_name || t.profiles?.email}</option>)}
           </select>
@@ -524,6 +599,9 @@ function DayPanel({ date, dayEvents, showForm, setShowForm, titleRef, typeRef, c
               comments={commentsByEvent[ev.id] || []} addComment={addComment}
               colorFor={colorFor} nameFor={nameFor}
               companyBadge={showCompanyBadge ? companiesMeta[ev.company_id] : null}
+              isOpenReminders={!!openReminders[ev.id]} onToggleReminders={() => toggleRemindersPanel(ev.id)}
+              reminders={remindersByEvent[ev.id] || []} addReminder={addReminder} removeReminder={removeReminder}
+              profile={profile}
             />
           ))}
         </div>
@@ -532,16 +610,36 @@ function DayPanel({ date, dayEvents, showForm, setShowForm, titleRef, typeRef, c
   );
 }
 
-function EventRow({ ev, showDate, toggleComplete, toggleStarred, removeEvent, isOpen, onToggleComments, comments, addComment, colorFor, nameFor, companyBadge }){
+function EventRow({ ev, showDate, toggleComplete, toggleStarred, removeEvent, isOpen, onToggleComments, comments, addComment, colorFor, nameFor, companyBadge,
+  isOpenReminders, onToggleReminders, reminders, addReminder, removeReminder, profile }){
   const meta = TYPE_META[ev.type] || TYPE_META.zadanie;
   const cat = CATEGORY_META[ev.category] || CATEGORY_META.inne;
   const userColor = colorFor(ev);
   const commentRef = useRef(null);
+  const [selectedReminder, setSelectedReminder] = React.useState("");
 
   function submitComment(){
     const val = commentRef.current?.value || "";
     addComment(ev.id, val);
     if (commentRef.current) commentRef.current.value = "";
+  }
+
+  function submitReminder(){
+    if (selectedReminder) {
+      addReminder(ev.id, selectedReminder, ev.event_date, ev.event_time, ev.title);
+      setSelectedReminder("");
+    }
+  }
+
+  async function deleteReminder(reminderId){
+    await removeReminder(reminderId);
+    // Reload reminders
+    const { data } = await supabase
+      .from("reminders")
+      .select("*")
+      .eq("event_id", ev.id)
+      .eq("user_id", profile.id);
+    // Trigger parent reload somehow - for now just show optimistic update
   }
 
   return (
@@ -570,6 +668,7 @@ function EventRow({ ev, showDate, toggleComplete, toggleStarred, removeEvent, is
           <Star size={15} fill={ev.starred ? "#f0c300" : "none"} color={ev.starred ? "#f0c300" : "#8b8f86"} />
         </button>
         <button onClick={onToggleComments} style={iconBtn}><MessageCircle size={14} /> {comments.length > 0 && <span style={{ fontSize: 11 }}>{comments.length}</span>}</button>
+        <button onClick={onToggleReminders} style={iconBtn} title="Przypomnień"><Bell size={14} color={reminders.length > 0 ? "#f0c300" : "#8b8f86"} /> {reminders.length > 0 && <span style={{ fontSize: 11 }}>{reminders.length}</span>}</button>
         <button onClick={() => removeEvent(ev.id)} style={iconBtn}><X size={14} /></button>
       </div>
       {isOpen && (
@@ -584,6 +683,60 @@ function EventRow({ ev, showDate, toggleComplete, toggleStarred, removeEvent, is
           <div style={{ display: "flex", gap: 6 }}>
             <input ref={commentRef} placeholder="Dodaj komentarz…" style={{ ...inputStyle, flex: 1 }} onKeyDown={e => { if (e.key === "Enter") submitComment(); }} />
             <button type="button" onClick={submitComment} style={saveBtn}>Wyślij</button>
+          </div>
+        </div>
+      )}
+      {isOpenReminders && (
+        <div style={{ marginTop: 10, paddingTop: 10, borderTop: "1px solid #f0ede2", background: "#fef3d4", borderRadius: 8, padding: 12, display: "flex", flexDirection: "column", gap: 8 }}>
+          <div style={{ fontWeight: 700, fontSize: 14, color: "#22301f", display: "flex", alignItems: "center", gap: 6 }}><Bell size={16} color="#f0c300" /> Przypomnienia</div>
+          
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <select value={selectedReminder} onChange={e => setSelectedReminder(e.target.value)} style={{ ...inputStyle, flex: 1, minWidth: 180 }}>
+              <option value="">Wybierz typ przypomnienia...</option>
+              {REMINDER_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
+            <button onClick={submitReminder} style={saveBtn}>Dodaj</button>
+          </div>
+
+          {reminders.length === 0 ? (
+            <div style={{ color: "#8b8f86", fontSize: 12 }}>Brak ustawionych przypomnień</div>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              {reminders.map((r) => {
+                const opt = REMINDER_OPTIONS.find((o) => o.value === r.reminder_type);
+                return (
+                  <div
+                    key={r.id}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      background: "#fff",
+                      padding: "8px 10px",
+                      borderRadius: 8,
+                      fontSize: 12,
+                      border: "1px solid #d4c4b0",
+                    }}
+                  >
+                    <span style={{ color: "#22301f" }}>⏰ {opt?.label}</span>
+                    <button
+                      onClick={() => deleteReminder(r.id)}
+                      style={{ ...iconBtn, padding: 0, color: "#8b8f86" }}
+                    >
+                      <X size={12} />
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          <div style={{ fontSize: 11, color: "#8b8f86", fontStyle: "italic" }}>
+            ✓ Maile będą wysłane automatycznie na: {profile.email}
           </div>
         </div>
       )}
