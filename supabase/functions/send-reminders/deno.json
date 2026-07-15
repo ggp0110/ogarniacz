@@ -1,0 +1,9 @@
+// Plik konfiguracji dla Edge Function
+// Scieżka: supabase/functions/send-reminders/deno.json
+
+{
+  "imports": {
+    "@supabase/supabase-js": "https://esm.sh/@supabase/supabase-js@2.38.0",
+    "resend": "https://esm.sh/resend@2.0.0"
+  }
+}
