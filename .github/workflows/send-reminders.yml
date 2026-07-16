@@ -1,0 +1,16 @@
+name: Wysyłka przypomnień
+
+on:
+  schedule:
+    - cron: "*/10 * * * *"   # co 10 minut
+  workflow_dispatch: {}        # pozwala też uruchomić ręcznie z zakładki Actions
+
+jobs:
+  call-edge-function:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Wywołaj funkcję send-reminders
+        run: |
+          curl -i -X POST "https://rfaheqbuinarvdjqbsmt.supabase.co/functions/v1/send-reminders" \
+            -H "Authorization: Bearer ${{ secrets.SUPABASE_ANON_KEY }}" \
+            -H "Content-Type: application/json"
