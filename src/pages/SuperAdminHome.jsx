@@ -85,7 +85,7 @@ export default function SuperAdminHome({ profile, onEnterCompany, onEnterAll, on
           </button>
         </header>
 
-        {error && <div style={{ background: "#fdeceb", color: "#9a3b34", padding: "8px 12px", borderRadius: 8, fontSize: 13, marginBottom: 14 }}>{error}</div>}
+        {error && <div style={{ background: "#fdeceb", color: "#d94a38", padding: "8px 12px", borderRadius: 8, fontSize: 13, marginBottom: 14 }}>{error}</div>}
 
         <div style={{ ...card, marginBottom: 20, background: "#fbf7ec" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8, fontWeight: 700, fontSize: 13, color: "#7a5c12", marginBottom: 4 }}>
@@ -147,7 +147,7 @@ export default function SuperAdminHome({ profile, onEnterCompany, onEnterAll, on
                                 }} />
                             ))}
                           </div>
-                          <button onClick={() => removeMembership(m.id)} style={{ background: "none", border: "none", color: "#9a3b34", cursor: "pointer", fontSize: 11.5 }}>Usuń</button>
+                          <button onClick={() => removeMembership(m.id)} style={{ background: "none", border: "none", color: "#d94a38", cursor: "pointer", fontSize: 11.5 }}>Usuń</button>
                         </div>
                       </div>
                     ))}

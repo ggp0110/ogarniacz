@@ -50,7 +50,7 @@ export default function SetPassword({ onDone }){
         <input ref={pass2Ref} type="password" placeholder="powtórz hasło" style={inputStyle}
           onKeyDown={e => { if (e.key === "Enter") handleSubmit(); }} />
 
-        {error && <div style={{ color: "#9a3b34", fontSize: 12.5 }}>{error}</div>}
+        {error && <div style={{ color: "#d94a38", fontSize: 12.5 }}>{error}</div>}
 
         <button type="button" onClick={handleSubmit} disabled={loading} style={{ ...saveBtn, padding: "10px 14px", fontSize: 14 }}>
           {loading ? "Zapisywanie…" : "Zapisz i przejdź dalej"}

@@ -98,7 +98,7 @@ export default function App(){
   if (errorMsg) {
     return (
       <div style={{ ...pageWrap, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
-        <div style={{ maxWidth: 420, textAlign: "center", color: "#9a3b34" }}>{errorMsg}</div>
+        <div style={{ maxWidth: 420, textAlign: "center", color: "#d94a38" }}>{errorMsg}</div>
       </div>
     );
   }

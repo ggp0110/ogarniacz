@@ -93,10 +93,10 @@ export default function ReminderPanel({ eventId, eventDate, eventTime, userEmail
   }
 
   return (
-    <div style={{ ...card, background: "#fbf9f3", borderLeft: "4px solid #f0c300" }}>
+    <div style={{ ...card, background: "#fbf9f3", borderLeft: "4px solid #C5E548" }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <Bell size={16} color="#f0c300" />
+          <Bell size={16} color="#C5E548" />
           <span style={{ fontWeight: 700, fontSize: 14, color: "#22301f" }}>Przypomnienia</span>
         </div>
         <button onClick={onClose} style={iconBtn}>
@@ -104,7 +104,7 @@ export default function ReminderPanel({ eventId, eventDate, eventTime, userEmail
         </button>
       </div>
 
-      {error && <div style={{ color: "#9a3b34", fontSize: 12, marginBottom: 8 }}>{error}</div>}
+      {error && <div style={{ color: "#d94a38", fontSize: 12, marginBottom: 8 }}>{error}</div>}
 
       <div style={{ display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
         <select ref={selectedRef} style={{ ...inputStyle, flex: 1, minWidth: 180 }}>

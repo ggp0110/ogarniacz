@@ -52,7 +52,7 @@ export default function Login(){
           </>
         )}
 
-        {error && <div style={{ color: "#9a3b34", fontSize: 12.5 }}>{error}</div>}
+        {error && <div style={{ color: "#d94a38", fontSize: 12.5 }}>{error}</div>}
         {info && <div style={{ color: "#1a5c38", fontSize: 12.5 }}>{info}</div>}
 
         {mode === "login" ? (

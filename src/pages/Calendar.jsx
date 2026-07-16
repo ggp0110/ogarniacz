@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useMemo, useCallback, useRef } from "react";
 import { supabase } from "../supabaseClient";
-import { pageWrap, card, inputStyle, saveBtn, cancelBtn, addBtn, tabStyle, iconBtn, CATEGORY_META, TYPE_META, colorForIndex, USER_COLOR_PALETTE } from "../theme";
+import { pageWrap, card, inputStyle, saveBtn, cancelBtn, addBtn, tabStyle, iconBtn, CATEGORY_META, TYPE_META, colorForIndex, USER_COLOR_PALETTE, pillBtn, pillCount, deleteBtn } from "../theme";
 import {
   ChevronLeft, ChevronRight, Plus, X, MessageCircle, Check, Users, CalendarDays,
   ListChecks, Loader2, LogOut, Star, Lock, Building2, Settings, ArrowLeft, LayoutGrid, Bell, ListTodo
@@ -87,7 +87,7 @@ export default function Calendar({ companyId, role, profile, onExit, onLogout })
   }, [isAll, companiesMeta, formCompanyId]);
 
   const colorFor = useCallback((profileId) => {
-    if (!profileId) return "#8b2e4a";
+    if (!profileId) return "#4d3658";
     const t = team.find(t => t.profile_id === profileId);
     if (t?.color) return t.color;
     const idx = team.findIndex(t => t.profile_id === profileId);
@@ -408,14 +408,14 @@ export default function Calendar({ companyId, role, profile, onExit, onLogout })
           <div>
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
               {onExit && <button onClick={onExit} style={iconBtn} title="Wróć"><ArrowLeft size={16} /></button>}
-              {isAll ? <LayoutGrid size={16} color="#8b2e4a" /> : <Building2 size={16} color="#8b2e4a" />}
-              <span className="top-header-title" style={{ fontFamily: "'Fraunces', serif", fontWeight: 700, fontSize: 22, color: "#8b2e4a" }}>
+              {isAll ? <LayoutGrid size={16} color="#4d3658" /> : <Building2 size={16} color="#4d3658" />}
+              <span className="top-header-title" style={{ fontFamily: "'Fraunces', serif", fontWeight: 900, fontSize: 26, color: "#4d3658" }}>
                 {isAll ? "Wszystkie firmy" : (companyName || "Kalendarz")}
               </span>
             </div>
             <div style={{ fontSize: 12, color: "#8b8f86", marginTop: 2, display: "flex", alignItems: "center", gap: 6 }}>
               <Users size={12} /> {profile.full_name || profile.email}
-              {isBossSomewhere && <span style={{ fontSize: 10, fontWeight: 800, color: "#fff", background: "#8b2e4a", padding: "1px 7px", borderRadius: 20 }}>SZEF</span>}
+              {isBossSomewhere && <span style={{ fontSize: 10, fontWeight: 800, color: "#fff", background: "#4d3658", padding: "1px 7px", borderRadius: 20 }}>SZEF</span>}
             </div>
           </div>
           <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
@@ -429,7 +429,7 @@ export default function Calendar({ companyId, role, profile, onExit, onLogout })
           </div>
         </header>
 
-        {error && <div style={{ background: "#fdeceb", color: "#9a3b34", padding: "8px 12px", borderRadius: 8, fontSize: 13, marginBottom: 14 }}>{error}</div>}
+        {error && <div style={{ background: "#fdeceb", color: "#d94a38", padding: "8px 12px", borderRadius: 8, fontSize: 13, marginBottom: 14 }}>{error}</div>}
 
         {isAll ? (
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 14 }}>
@@ -478,7 +478,7 @@ export default function Calendar({ companyId, role, profile, onExit, onLogout })
             <div style={card}>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
                 <button onClick={() => setCursor(new Date(year, month - 1, 1))} style={iconBtn}><ChevronLeft size={18} /></button>
-                <div style={{ fontFamily: "'Fraunces', serif", fontWeight: 600, fontSize: 17 }}>{MONTHS_PL[month]} {year}</div>
+                <div style={{ fontFamily: "'Fraunces', serif", fontWeight: 800, fontSize: 19 }}>{MONTHS_PL[month]} {year}</div>
                 <button onClick={() => setCursor(new Date(year, month + 1, 1))} style={iconBtn}><ChevronRight size={18} /></button>
               </div>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(7,1fr)", gap: 4, marginBottom: 6 }}>
@@ -495,13 +495,13 @@ export default function Calendar({ companyId, role, profile, onExit, onLogout })
                   const hasStarred = dayList.some(e => e.starred && !e.completed);
                   return (
                     <button key={i} onClick={() => setSelectedDate(d)} className="day-grid-cell" style={{
-                      border: isSelected ? "2px solid #8b2e4a" : "1px solid #d4c4b0",
+                      border: isSelected ? "2px solid #4d3658" : "1px solid #d4c4b0",
                       background: isToday ? "#fef3d4" : "#fff", borderRadius: 9, minHeight: 56, padding: 5,
                       textAlign: "left", cursor: "pointer", opacity: inMonth ? 1 : 0.35, display: "flex", flexDirection: "column", gap: 3,
                     }}>
-                      <span style={{ fontSize: 12, fontWeight: isToday ? 800 : 600, color: isToday ? "#f0c300" : "#22301f" }}>{d.getDate()}</span>
-                      {allDone && <Check size={10} color="#8b2e4a" />}
-                      {hasStarred && <Star size={9} fill="#f0c300" color="#f0c300" />}
+                      <span style={{ fontSize: 12, fontWeight: isToday ? 800 : 600, color: isToday ? "#C5E548" : "#22301f" }}>{d.getDate()}</span>
+                      {allDone && <Check size={10} color="#4d3658" />}
+                      {hasStarred && <Star size={9} fill="#C5E548" color="#C5E548" />}
                       <div style={{ display: "flex", gap: 3, flexWrap: "wrap" }}>
                         {dayList.slice(0,3).map(ev => (
                           <span key={ev.id} style={{ width: 5, height: 5, borderRadius: "50%", background: eventColor(ev), opacity: ev.completed ? 0.3 : 1 }} />
@@ -534,7 +534,7 @@ export default function Calendar({ companyId, role, profile, onExit, onLogout })
           <div style={card}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
               <button onClick={() => setCursor(new Date(cursor.getTime() - 7 * 24 * 60 * 60 * 1000))} style={iconBtn}><ChevronLeft size={18} /></button>
-              <div style={{ fontFamily: "'Fraunces', serif", fontWeight: 600, fontSize: 17 }}>
+              <div style={{ fontFamily: "'Fraunces', serif", fontWeight: 800, fontSize: 19 }}>
                 Tydzień: {toKey(week[0])} – {toKey(week[6])}
               </div>
               <button onClick={() => setCursor(new Date(cursor.getTime() + 7 * 24 * 60 * 60 * 1000))} style={iconBtn}><ChevronRight size={18} /></button>
@@ -546,8 +546,8 @@ export default function Calendar({ companyId, role, profile, onExit, onLogout })
                 const dayList = eventsByDay[key] || [];
                 const isToday = sameDay(d, new Date());
                 return (
-                  <div key={i} style={{ background: isToday ? "#fef3d4" : "#fff", border: `1px solid ${isToday ? "#f0c300" : "#d4c4b0"}`, borderRadius: 10, padding: 12, minHeight: 200 }}>
-                    <div style={{ fontSize: 12, fontWeight: 700, color: isToday ? "#f0c300" : "#8b8f86", marginBottom: 8, textTransform: "uppercase" }}>
+                  <div key={i} style={{ background: isToday ? "#fef3d4" : "#fff", border: `1px solid ${isToday ? "#C5E548" : "#d4c4b0"}`, borderRadius: 10, padding: 12, minHeight: 200 }}>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: isToday ? "#C5E548" : "#8b8f86", marginBottom: 8, textTransform: "uppercase" }}>
                       {DAYS_PL[d.getDay() === 0 ? 6 : d.getDay() - 1]} {d.getDate()}
                     </div>
                     <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -577,7 +577,7 @@ export default function Calendar({ companyId, role, profile, onExit, onLogout })
           </div>
         ) : (
           <div style={card}>
-            <div style={{ fontFamily: "'Fraunces', serif", fontWeight: 600, fontSize: 18, marginBottom: 12 }}>Nadchodzące (niezakończone)</div>
+            <div style={{ fontFamily: "'Fraunces', serif", fontWeight: 800, fontSize: 20, marginBottom: 12 }}>Nadchodzące (niezakończone)</div>
             {upcoming.length === 0 ? <div style={{ color: "#8b8f86", fontSize: 13 }}>Brak nadchodzących zadań.</div> : (
               <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                 {upcoming.map(ev => (
@@ -613,7 +613,7 @@ function DayPanel({ date, dayEvents, showForm, setShowForm, titleRef, typeRef, c
   return (
     <div style={card}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12, flexWrap: "wrap", gap: 8 }}>
-        <div style={{ fontFamily: "'Fraunces', serif", fontWeight: 600, fontSize: 17, textTransform: "capitalize" }}>{label}</div>
+        <div style={{ fontFamily: "'Fraunces', serif", fontWeight: 800, fontSize: 19, textTransform: "capitalize" }}>{label}</div>
         <button onClick={() => setShowForm(s => !s)} style={addBtn}><Plus size={15} style={{ marginRight: 4 }} /> Dodaj</button>
       </div>
 
@@ -643,7 +643,7 @@ function DayPanel({ date, dayEvents, showForm, setShowForm, titleRef, typeRef, c
               <input ref={privateRef} type="checkbox" /> Prywatne — niewidoczne dla zespołu
             </label>
           )}
-          {formError && <div style={{ color: "#9a3b34", fontSize: 12.5 }}>{formError}</div>}
+          {formError && <div style={{ color: "#d94a38", fontSize: 12.5 }}>{formError}</div>}
           <div style={{ display: "flex", gap: 8 }}>
             <button type="button" onClick={addEvent} style={saveBtn}>Zapisz</button>
             <button type="button" onClick={() => setShowForm(false)} style={cancelBtn}>Anuluj</button>
@@ -710,37 +710,53 @@ function EventRow({ ev, showDate, toggleComplete, toggleStarred, removeEvent, is
   const doneCount = checklist.filter(i => i.done).length;
 
   return (
-    <div className="event-row" style={{ border: "1px solid #d4c4b0", borderLeft: `3px solid ${userColor}`, borderRadius: 10, padding: "10px 12px" }}>
+    <div className="event-row" style={{ border: "1px solid #d4c4b0", borderLeft: `3px solid ${userColor}`, borderRadius: 10, padding: "12px 14px" }}>
       <div className="event-row-head" style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
         <button onClick={() => toggleComplete(ev)} style={{ background: "none", border: "none", cursor: "pointer", marginTop: 2, flexShrink: 0 }}>
           {ev.completed
-            ? <div style={{ width: 18, height: 18, borderRadius: "50%", background: "#8b2e4a", display: "flex", alignItems: "center", justifyContent: "center" }}><Check size={12} color="#fff" /></div>
-            : <div style={{ width: 18, height: 18, borderRadius: "50%", border: "2px solid #cfcabb" }} />}
+            ? <div style={{ width: 20, height: 20, borderRadius: "50%", background: "#4d3658", display: "flex", alignItems: "center", justifyContent: "center" }}><Check size={13} color="#fff" /></div>
+            : <div style={{ width: 20, height: 20, borderRadius: "50%", border: "2px solid #cfcabb" }} />}
         </button>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-            <span style={{ fontWeight: 700, fontSize: 14, textDecoration: ev.completed ? "line-through" : "none", color: ev.completed ? "#a3a698" : "#22301f" }}>{ev.title}</span>
-            {companyBadge && <span style={{ fontSize: 10.5, fontWeight: 700, color: "#fff", background: colorFor(ev), padding: "2px 7px", borderRadius: 20 }}>{companyBadge}</span>}
-            <span style={{ fontSize: 10.5, fontWeight: 700, color: meta.color, background: "#f0ede2", padding: "2px 7px", borderRadius: 20 }}>{meta.label}</span>
-            <span style={{ fontSize: 10.5, fontWeight: 700, color: cat.fg, background: cat.bg, padding: "2px 7px", borderRadius: 20 }}>{cat.label}</span>
-            {ev.is_private && <span style={{ display: "flex", alignItems: "center", gap: 3, fontSize: 10.5, fontWeight: 700, color: "#6b6a5e", background: "#f0ede2", padding: "2px 7px", borderRadius: 20 }}><Lock size={9} /> Prywatne</span>}
+            <span style={{ fontWeight: 800, fontSize: 16.5, textDecoration: ev.completed ? "line-through" : "none", color: ev.completed ? "#a3a698" : "#3a2a1f" }}>{ev.title}</span>
+            <button onClick={() => toggleStarred(ev)} style={{ background: "none", border: "none", cursor: "pointer", padding: 0, display: "flex" }} title="Oznacz jako ważne">
+              <Star size={16} fill={ev.starred ? "#C5E548" : "none"} color={ev.starred ? "#C5E548" : "#c3bfae"} />
+            </button>
           </div>
-          <div style={{ fontSize: 12, color: "#8b8f86", marginTop: 2, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", marginTop: 4 }}>
+            {companyBadge && <span style={{ fontSize: 11.5, fontWeight: 800, color: "#fff", background: colorFor(ev), padding: "3px 9px", borderRadius: 20 }}>{companyBadge}</span>}
+            <span style={{ fontSize: 11.5, fontWeight: 800, color: meta.color, background: "#f0ede2", padding: "3px 9px", borderRadius: 20 }}>{meta.label}</span>
+            <span style={{ fontSize: 11.5, fontWeight: 800, color: cat.fg, background: cat.bg, padding: "3px 9px", borderRadius: 20 }}>{cat.label}</span>
+            {ev.is_private && <span style={{ display: "flex", alignItems: "center", gap: 3, fontSize: 11.5, fontWeight: 800, color: "#6b6a5e", background: "#f0ede2", padding: "3px 9px", borderRadius: 20 }}><Lock size={10} /> Prywatne</span>}
+          </div>
+          <div style={{ fontSize: 13, color: "#8b8f86", marginTop: 5, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
             {showDate && <span>{ev.event_date}</span>}
             {ev.event_time && <span>{ev.event_time.slice(0,5)}</span>}
             <span style={{ display: "flex", alignItems: "center", gap: 4 }}><span style={{ width: 8, height: 8, borderRadius: "50%", background: userColor }} />{nameFor(ev)}</span>
           </div>
         </div>
-        <button onClick={() => toggleStarred(ev)} style={iconBtn} title="Oznacz jako ważne">
-          <Star size={15} fill={ev.starred ? "#f0c300" : "none"} color={ev.starred ? "#f0c300" : "#8b8f86"} />
+      </div>
+
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10, paddingLeft: 30 }}>
+        <button onClick={onToggleChecklist} style={pillBtn(checklist.length > 0 ? "#4d3658" : "#d4c4b0")}>
+          <ListTodo size={14} color={checklist.length > 0 ? "#4d3658" : "#8b6b5a"} />
+          Checklista
+          {checklist.length > 0 && <span style={pillCount("#4d3658")}>{doneCount}/{checklist.length}</span>}
         </button>
-        <button onClick={onToggleChecklist} style={iconBtn} title="Checklista">
-          <ListTodo size={14} color={checklist.length > 0 ? "#8b2e4a" : "#8b8f86"} />
-          {checklist.length > 0 && <span style={{ fontSize: 11 }}>{doneCount}/{checklist.length}</span>}
+        <button onClick={onToggleComments} style={pillBtn(comments.length > 0 ? "#9cb49a" : "#d4c4b0")}>
+          <MessageCircle size={14} color={comments.length > 0 ? "#5f7a68" : "#8b6b5a"} />
+          Komentarze
+          {comments.length > 0 && <span style={pillCount("#9cb49a")}>{comments.length}</span>}
         </button>
-        <button onClick={onToggleComments} style={iconBtn}><MessageCircle size={14} /> {comments.length > 0 && <span style={{ fontSize: 11 }}>{comments.length}</span>}</button>
-        <button onClick={onToggleReminders} style={iconBtn} title="Przypomnień"><Bell size={14} color={reminders.length > 0 ? "#f0c300" : "#8b8f86"} /> {reminders.length > 0 && <span style={{ fontSize: 11 }}>{reminders.length}</span>}</button>
-        <button onClick={() => removeEvent(ev.id)} style={iconBtn}><X size={14} /></button>
+        <button onClick={onToggleReminders} style={pillBtn(reminders.length > 0 ? "#33401a" : "#d4c4b0")}>
+          <Bell size={14} color={reminders.length > 0 ? "#8a9c1a" : "#8b6b5a"} />
+          Przypomnienia
+          {reminders.length > 0 && <span style={pillCount("#C5E548")}>{reminders.length}</span>}
+        </button>
+        <button onClick={() => removeEvent(ev.id)} style={{ ...deleteBtn, marginLeft: "auto" }}>
+          <X size={14} /> Usuń
+        </button>
       </div>
       {isOpen && (
         <div style={{ marginTop: 10, paddingTop: 10, borderTop: "1px solid #f0ede2", display: "flex", flexDirection: "column", gap: 8 }}>
@@ -759,7 +775,7 @@ function EventRow({ ev, showDate, toggleComplete, toggleStarred, removeEvent, is
       )}
       {isOpenReminders && (
         <div style={{ marginTop: 10, paddingTop: 10, borderTop: "1px solid #f0ede2", background: "#fef3d4", borderRadius: 8, padding: 12, display: "flex", flexDirection: "column", gap: 8 }}>
-          <div style={{ fontWeight: 700, fontSize: 14, color: "#22301f", display: "flex", alignItems: "center", gap: 6 }}><Bell size={16} color="#f0c300" /> Przypomnienia</div>
+          <div style={{ fontWeight: 700, fontSize: 14, color: "#22301f", display: "flex", alignItems: "center", gap: 6 }}><Bell size={16} color="#C5E548" /> Przypomnienia</div>
           
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
             <select value={selectedReminder} onChange={e => setSelectedReminder(e.target.value)} style={{ ...inputStyle, flex: 1, minWidth: 180 }}>
@@ -814,7 +830,7 @@ function EventRow({ ev, showDate, toggleComplete, toggleStarred, removeEvent, is
       {isOpenChecklist && (
         <div style={{ marginTop: 10, paddingTop: 10, borderTop: "1px solid #f0ede2", display: "flex", flexDirection: "column", gap: 8 }}>
           <div style={{ fontWeight: 700, fontSize: 13, color: "#2a2530", display: "flex", alignItems: "center", gap: 6 }}>
-            <ListTodo size={15} color="#8b2e4a" /> Checklista {checklist.length > 0 && `(${doneCount}/${checklist.length})`}
+            <ListTodo size={15} color="#4d3658" /> Checklista {checklist.length > 0 && `(${doneCount}/${checklist.length})`}
           </div>
           {checklist.length === 0 ? (
             <div style={{ color: "#8b8f86", fontSize: 12 }}>Brak punktów listy.</div>
@@ -824,7 +840,7 @@ function EventRow({ ev, showDate, toggleComplete, toggleStarred, removeEvent, is
                 <div key={item.id} style={{ display: "flex", alignItems: "center", gap: 8, background: "#fbf9f3", borderRadius: 8, padding: "6px 10px" }}>
                   <button onClick={() => toggleChecklistItem(ev.id, item)} style={{ background: "none", border: "none", cursor: "pointer", padding: 0, flexShrink: 0 }}>
                     {item.done
-                      ? <div style={{ width: 16, height: 16, borderRadius: 4, background: "#8b2e4a", display: "flex", alignItems: "center", justifyContent: "center" }}><Check size={11} color="#fff" /></div>
+                      ? <div style={{ width: 16, height: 16, borderRadius: 4, background: "#4d3658", display: "flex", alignItems: "center", justifyContent: "center" }}><Check size={11} color="#fff" /></div>
                       : <div style={{ width: 16, height: 16, borderRadius: 4, border: "2px solid #cfcabb" }} />}
                   </button>
                   <span style={{ flex: 1, fontSize: 13, textDecoration: item.done ? "line-through" : "none", color: item.done ? "#a3a698" : "#2a2530" }}>{item.text}</span>
@@ -859,7 +875,7 @@ function TeamPanel({ companyId, team, onChanged }){
   }
   return (
     <div style={{ ...card, marginBottom: 14 }}>
-      <div style={{ fontFamily: "'Fraunces', serif", fontWeight: 600, fontSize: 16, marginBottom: 10 }}>Zespół</div>
+      <div style={{ fontFamily: "'Fraunces', serif", fontWeight: 800, fontSize: 18, marginBottom: 10 }}>Zespół</div>
       <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
         {team.map(t => (
           <div key={t.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
@@ -879,7 +895,7 @@ function TeamPanel({ companyId, team, onChanged }){
                 <option value="pracownik">Pracownik</option>
                 <option value="szef">Szef</option>
               </select>
-              <button onClick={() => removeMember(t.id)} style={{ background: "none", border: "none", color: "#9a3b34", cursor: "pointer", fontSize: 12 }}>Usuń</button>
+              <button onClick={() => removeMember(t.id)} style={{ background: "none", border: "none", color: "#d94a38", cursor: "pointer", fontSize: 12 }}>Usuń</button>
             </div>
           </div>
         ))}
