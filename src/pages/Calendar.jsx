@@ -279,7 +279,7 @@ export default function Calendar({ companyId, role, profile, onExit, onLogout })
   async function addReminder(eventId, reminderType, eventDate, eventTime, eventTitle){
     if (!reminderType) return;
     try {
-      const eventDateTime = new Date(`${eventDate}T${eventTime || "09:00"}Z`);
+      const eventDateTime = new Date(`${eventDate}T${eventTime || "09:00"}`);
       const sendAt = new Date(eventDateTime);
 
       if (reminderType === "15min") {
