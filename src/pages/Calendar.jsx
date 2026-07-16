@@ -3,7 +3,7 @@ import { supabase } from "../supabaseClient";
 import { pageWrap, card, inputStyle, saveBtn, cancelBtn, addBtn, tabStyle, iconBtn, CATEGORY_META, TYPE_META, colorForIndex, USER_COLOR_PALETTE } from "../theme";
 import {
   ChevronLeft, ChevronRight, Plus, X, MessageCircle, Check, Users, CalendarDays,
-  ListChecks, Loader2, LogOut, Star, Lock, Building2, Settings, ArrowLeft, LayoutGrid, Bell
+  ListChecks, Loader2, LogOut, Star, Lock, Building2, Settings, ArrowLeft, LayoutGrid, Bell, ListTodo
 } from "lucide-react";
 
 function pad(n){ return n.toString().padStart(2,"0"); }
@@ -67,6 +67,8 @@ export default function Calendar({ companyId, role, profile, onExit, onLogout })
   const [formCompanyId, setFormCompanyId] = useState("");
   const [openReminders, setOpenReminders] = useState({});
   const [remindersByEvent, setRemindersByEvent] = useState({});
+  const [openChecklist, setOpenChecklist] = useState({});
+  const [checklistByEvent, setChecklistByEvent] = useState({});
 
   const titleRef = useRef(null);
   const typeRef = useRef(null);
@@ -168,16 +170,28 @@ export default function Calendar({ companyId, role, profile, onExit, onLogout })
   useEffect(() => { loadMeta(); }, [loadMeta]);
   useEffect(() => { loadEvents(); }, [loadEvents]);
 
+  const loadEventsRef = useRef(loadEvents);
+  useEffect(() => { loadEventsRef.current = loadEvents; }, [loadEvents]);
+  const openCommentsRef = useRef(openComments);
+  useEffect(() => { openCommentsRef.current = openComments; }, [openComments]);
+  const openChecklistRef = useRef(openChecklist);
+  useEffect(() => { openChecklistRef.current = openChecklist; }, [openChecklist]);
+
   useEffect(() => {
     const channelName = isAll ? "all-companies-events" : `company-events-${companyId}`;
     const channel = supabase.channel(channelName)
-      .on("postgres_changes", { event: "*", schema: "public", table: "events", ...(isAll ? {} : { filter: `company_id=eq.${companyId}` }) }, () => loadEvents())
+      .on("postgres_changes", { event: "*", schema: "public", table: "events", ...(isAll ? {} : { filter: `company_id=eq.${companyId}` }) }, () => loadEventsRef.current())
       .on("postgres_changes", { event: "*", schema: "public", table: "event_comments" }, (payload) => {
         const evId = payload.new?.event_id || payload.old?.event_id;
-        if (evId && openComments[evId]) loadComments(evId);
+        if (evId && openCommentsRef.current[evId]) loadComments(evId);
+      })
+      .on("postgres_changes", { event: "*", schema: "public", table: "checklist_items" }, (payload) => {
+        const evId = payload.new?.event_id || payload.old?.event_id;
+        if (evId && openChecklistRef.current[evId]) loadChecklist(evId);
       })
       .subscribe();
     return () => { supabase.removeChannel(channel); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [companyId, isAll]);
 
   async function loadComments(eventId){
@@ -196,6 +210,47 @@ export default function Calendar({ companyId, role, profile, onExit, onLogout })
       .eq("event_id", eventId)
       .eq("user_id", profile.id);
     setRemindersByEvent(prev => ({ ...prev, [eventId]: data || [] }));
+  }
+
+  async function loadChecklist(eventId){
+    const { data } = await supabase
+      .from("checklist_items")
+      .select("*")
+      .eq("event_id", eventId)
+      .order("position")
+      .order("created_at");
+    setChecklistByEvent(prev => ({ ...prev, [eventId]: data || [] }));
+  }
+
+  function toggleChecklistPanel(eventId){
+    setOpenChecklist(o => {
+      const next = { ...o, [eventId]: !o[eventId] };
+      if (next[eventId] && !checklistByEvent[eventId]) loadChecklist(eventId);
+      return next;
+    });
+  }
+
+  async function addChecklistItem(eventId, text){
+    const trimmed = (text || "").trim();
+    if (!trimmed) return;
+    const currentCount = (checklistByEvent[eventId] || []).length;
+    await supabase.from("checklist_items").insert({
+      event_id: eventId, text: trimmed, position: currentCount, created_by: profile.id,
+    });
+    loadChecklist(eventId);
+  }
+
+  async function toggleChecklistItem(eventId, item){
+    setChecklistByEvent(prev => ({
+      ...prev,
+      [eventId]: (prev[eventId] || []).map(i => i.id === item.id ? { ...i, done: !item.done } : i),
+    }));
+    await supabase.from("checklist_items").update({ done: !item.done }).eq("id", item.id);
+  }
+
+  async function removeChecklistItem(eventId, itemId){
+    setChecklistByEvent(prev => ({ ...prev, [eventId]: (prev[eventId] || []).filter(i => i.id !== itemId) }));
+    await supabase.from("checklist_items").delete().eq("id", itemId);
   }
 
   function toggleCommentsPanel(eventId){
@@ -259,11 +314,10 @@ export default function Calendar({ companyId, role, profile, onExit, onLogout })
     }
   }
 
-  async function removeReminder(reminderId){
+  async function removeReminder(eventId, reminderId){
+    setRemindersByEvent(prev => ({ ...prev, [eventId]: (prev[eventId] || []).filter(r => r.id !== reminderId) }));
     const { error: err } = await supabase.from("reminders").delete().eq("id", reminderId);
-    if (err) {
-      setError(err.message);
-    }
+    if (err) { setError(err.message); loadReminders(eventId); }
   }
 
   const visibleEvents = useMemo(() => {
@@ -470,6 +524,9 @@ export default function Calendar({ companyId, role, profile, onExit, onLogout })
               showCompanyBadge={isAll}
               openReminders={openReminders} toggleRemindersPanel={toggleRemindersPanel}
               remindersByEvent={remindersByEvent} addReminder={addReminder} removeReminder={removeReminder}
+              openChecklist={openChecklist} toggleChecklistPanel={toggleChecklistPanel}
+              checklistByEvent={checklistByEvent} addChecklistItem={addChecklistItem}
+              toggleChecklistItem={toggleChecklistItem} removeChecklistItem={removeChecklistItem}
               profile={profile}
             />
           </div>
@@ -532,6 +589,9 @@ export default function Calendar({ companyId, role, profile, onExit, onLogout })
                     companyBadge={isAll ? companiesMeta[ev.company_id] : null}
                     isOpenReminders={!!openReminders[ev.id]} onToggleReminders={() => toggleRemindersPanel(ev.id)}
                     reminders={remindersByEvent[ev.id] || []} addReminder={addReminder} removeReminder={removeReminder}
+                    isOpenChecklist={!!openChecklist[ev.id]} onToggleChecklist={() => toggleChecklistPanel(ev.id)}
+                    checklist={checklistByEvent[ev.id] || []} addChecklistItem={addChecklistItem}
+                    toggleChecklistItem={toggleChecklistItem} removeChecklistItem={removeChecklistItem}
                     profile={profile}
                   />
                 ))}
@@ -547,7 +607,8 @@ export default function Calendar({ companyId, role, profile, onExit, onLogout })
 function DayPanel({ date, dayEvents, showForm, setShowForm, titleRef, typeRef, categoryRef, timeRef, assigneeRef, privateRef,
   team, canPrivate, formError, addEvent, toggleComplete, toggleStarred, removeEvent, openComments, toggleCommentsPanel,
   commentsByEvent, addComment, colorFor, nameFor, isAll, companiesMeta, formCompanyId, setFormCompanyId, showCompanyBadge,
-  openReminders, toggleRemindersPanel, remindersByEvent, addReminder, removeReminder, profile }){
+  openReminders, toggleRemindersPanel, remindersByEvent, addReminder, removeReminder,
+  openChecklist, toggleChecklistPanel, checklistByEvent, addChecklistItem, toggleChecklistItem, removeChecklistItem, profile }){
   const label = date.toLocaleDateString("pl-PL", { weekday: "long", day: "numeric", month: "long" });
   return (
     <div style={card}>
@@ -601,6 +662,9 @@ function DayPanel({ date, dayEvents, showForm, setShowForm, titleRef, typeRef, c
               companyBadge={showCompanyBadge ? companiesMeta[ev.company_id] : null}
               isOpenReminders={!!openReminders[ev.id]} onToggleReminders={() => toggleRemindersPanel(ev.id)}
               reminders={remindersByEvent[ev.id] || []} addReminder={addReminder} removeReminder={removeReminder}
+              isOpenChecklist={!!openChecklist[ev.id]} onToggleChecklist={() => toggleChecklistPanel(ev.id)}
+              checklist={checklistByEvent[ev.id] || []} addChecklistItem={addChecklistItem}
+              toggleChecklistItem={toggleChecklistItem} removeChecklistItem={removeChecklistItem}
               profile={profile}
             />
           ))}
@@ -611,11 +675,13 @@ function DayPanel({ date, dayEvents, showForm, setShowForm, titleRef, typeRef, c
 }
 
 function EventRow({ ev, showDate, toggleComplete, toggleStarred, removeEvent, isOpen, onToggleComments, comments, addComment, colorFor, nameFor, companyBadge,
-  isOpenReminders, onToggleReminders, reminders, addReminder, removeReminder, profile }){
+  isOpenReminders, onToggleReminders, reminders, addReminder, removeReminder,
+  isOpenChecklist, onToggleChecklist, checklist, addChecklistItem, toggleChecklistItem, removeChecklistItem, profile }){
   const meta = TYPE_META[ev.type] || TYPE_META.zadanie;
   const cat = CATEGORY_META[ev.category] || CATEGORY_META.inne;
   const userColor = colorFor(ev);
   const commentRef = useRef(null);
+  const checklistInputRef = useRef(null);
   const [selectedReminder, setSelectedReminder] = React.useState("");
 
   function submitComment(){
@@ -631,16 +697,17 @@ function EventRow({ ev, showDate, toggleComplete, toggleStarred, removeEvent, is
     }
   }
 
-  async function deleteReminder(reminderId){
-    await removeReminder(reminderId);
-    // Reload reminders
-    const { data } = await supabase
-      .from("reminders")
-      .select("*")
-      .eq("event_id", ev.id)
-      .eq("user_id", profile.id);
-    // Trigger parent reload somehow - for now just show optimistic update
+  function deleteReminder(reminderId){
+    removeReminder(ev.id, reminderId);
   }
+
+  function submitChecklistItem(){
+    const val = checklistInputRef.current?.value || "";
+    addChecklistItem(ev.id, val);
+    if (checklistInputRef.current) checklistInputRef.current.value = "";
+  }
+
+  const doneCount = checklist.filter(i => i.done).length;
 
   return (
     <div className="event-row" style={{ border: "1px solid #d4c4b0", borderLeft: `3px solid ${userColor}`, borderRadius: 10, padding: "10px 12px" }}>
@@ -666,6 +733,10 @@ function EventRow({ ev, showDate, toggleComplete, toggleStarred, removeEvent, is
         </div>
         <button onClick={() => toggleStarred(ev)} style={iconBtn} title="Oznacz jako ważne">
           <Star size={15} fill={ev.starred ? "#f0c300" : "none"} color={ev.starred ? "#f0c300" : "#8b8f86"} />
+        </button>
+        <button onClick={onToggleChecklist} style={iconBtn} title="Checklista">
+          <ListTodo size={14} color={checklist.length > 0 ? "#8b2e4a" : "#8b8f86"} />
+          {checklist.length > 0 && <span style={{ fontSize: 11 }}>{doneCount}/{checklist.length}</span>}
         </button>
         <button onClick={onToggleComments} style={iconBtn}><MessageCircle size={14} /> {comments.length > 0 && <span style={{ fontSize: 11 }}>{comments.length}</span>}</button>
         <button onClick={onToggleReminders} style={iconBtn} title="Przypomnień"><Bell size={14} color={reminders.length > 0 ? "#f0c300" : "#8b8f86"} /> {reminders.length > 0 && <span style={{ fontSize: 11 }}>{reminders.length}</span>}</button>
@@ -737,6 +808,34 @@ function EventRow({ ev, showDate, toggleComplete, toggleStarred, removeEvent, is
 
           <div style={{ fontSize: 11, color: "#8b8f86", fontStyle: "italic" }}>
             ✓ Maile będą wysłane automatycznie na: {profile.email}
+          </div>
+        </div>
+      )}
+      {isOpenChecklist && (
+        <div style={{ marginTop: 10, paddingTop: 10, borderTop: "1px solid #f0ede2", display: "flex", flexDirection: "column", gap: 8 }}>
+          <div style={{ fontWeight: 700, fontSize: 13, color: "#2a2530", display: "flex", alignItems: "center", gap: 6 }}>
+            <ListTodo size={15} color="#8b2e4a" /> Checklista {checklist.length > 0 && `(${doneCount}/${checklist.length})`}
+          </div>
+          {checklist.length === 0 ? (
+            <div style={{ color: "#8b8f86", fontSize: 12 }}>Brak punktów listy.</div>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+              {checklist.map(item => (
+                <div key={item.id} style={{ display: "flex", alignItems: "center", gap: 8, background: "#fbf9f3", borderRadius: 8, padding: "6px 10px" }}>
+                  <button onClick={() => toggleChecklistItem(ev.id, item)} style={{ background: "none", border: "none", cursor: "pointer", padding: 0, flexShrink: 0 }}>
+                    {item.done
+                      ? <div style={{ width: 16, height: 16, borderRadius: 4, background: "#8b2e4a", display: "flex", alignItems: "center", justifyContent: "center" }}><Check size={11} color="#fff" /></div>
+                      : <div style={{ width: 16, height: 16, borderRadius: 4, border: "2px solid #cfcabb" }} />}
+                  </button>
+                  <span style={{ flex: 1, fontSize: 13, textDecoration: item.done ? "line-through" : "none", color: item.done ? "#a3a698" : "#2a2530" }}>{item.text}</span>
+                  <button onClick={() => removeChecklistItem(ev.id, item.id)} style={{ ...iconBtn, padding: 0 }}><X size={12} /></button>
+                </div>
+              ))}
+            </div>
+          )}
+          <div style={{ display: "flex", gap: 6 }}>
+            <input ref={checklistInputRef} placeholder="Nowy punkt listy…" style={{ ...inputStyle, flex: 1 }} onKeyDown={e => { if (e.key === "Enter") submitChecklistItem(); }} />
+            <button type="button" onClick={submitChecklistItem} style={saveBtn}>Dodaj</button>
           </div>
         </div>
       )}
