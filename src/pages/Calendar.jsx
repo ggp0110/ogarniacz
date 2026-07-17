@@ -2,9 +2,10 @@ import React, { useEffect, useState, useMemo, useCallback, useRef } from "react"
 import { supabase } from "../supabaseClient";
 import { pageWrap, card, inputStyle, saveBtn, cancelBtn, addBtn, tabStyle, iconBtn, CATEGORY_META, TYPE_META, colorForIndex, USER_COLOR_PALETTE, pillBtn, pillCount, deleteBtn } from "../theme";
 import { isPushSupported, subscribeToPush, unsubscribeFromPush, getCurrentPushSubscription } from "../pushNotifications";
+import CompanyTodoList from "../components/CompanyTodoList.jsx";
 import {
   ChevronLeft, ChevronRight, Plus, X, MessageCircle, Check, Users, CalendarDays,
-  ListChecks, Loader2, LogOut, Star, Lock, Building2, Settings, ArrowLeft, LayoutGrid, Bell, ListTodo, BellRing
+  ListChecks, Loader2, LogOut, Star, Lock, Building2, Settings, ArrowLeft, LayoutGrid, Bell, ListTodo, BellRing, ClipboardList
 } from "lucide-react";
 
 function pad(n){ return n.toString().padStart(2,"0"); }
@@ -270,6 +271,17 @@ export default function Calendar({ companyId, role, profile, onExit, onLogout })
     });
   }
 
+  // Kliknięcie w nazwę zadania rozwija od razu komentarze i checklistę (bez osobnych kliknięć)
+  function expandTaskDetails(eventId){
+    const opening = !(openComments[eventId] && openChecklist[eventId]);
+    setOpenComments(o => ({ ...o, [eventId]: opening }));
+    setOpenChecklist(o => ({ ...o, [eventId]: opening }));
+    if (opening) {
+      if (!commentsByEvent[eventId]) loadComments(eventId);
+      if (!checklistByEvent[eventId]) loadChecklist(eventId);
+    }
+  }
+
   async function addComment(eventId, text){
     const trimmed = (text || "").trim();
     if (!trimmed) return;
@@ -427,6 +439,9 @@ export default function Calendar({ companyId, role, profile, onExit, onLogout })
             <button onClick={() => setView("miesiac")} style={tabStyle(view === "miesiac")}><CalendarDays size={15} style={{ marginRight: 6 }} /> Miesiąc</button>
             <button onClick={() => setView("tydzien")} style={tabStyle(view === "tydzien")}><CalendarDays size={15} style={{ marginRight: 6 }} /> Tydzień</button>
             <button onClick={() => setView("lista")} style={tabStyle(view === "lista")}><ListChecks size={15} style={{ marginRight: 6 }} /> Lista</button>
+            {!isAll && (
+              <button onClick={() => setView("zadania_ogolne")} style={tabStyle(view === "zadania_ogolne")}><ClipboardList size={15} style={{ marginRight: 6 }} /> Zadania ogólne</button>
+            )}
             <button onClick={onLogout} style={{ ...iconBtn, border: "1px solid #d4c4b0", borderRadius: 8 }} title="Wyloguj"><LogOut size={15} /></button>
           </div>
         </header>
@@ -475,7 +490,9 @@ export default function Calendar({ companyId, role, profile, onExit, onLogout })
           <TeamPanel companyId={companyId} team={team} onChanged={loadMeta} />
         )}
 
-        {view === "miesiac" ? (
+        {view === "zadania_ogolne" ? (
+          <CompanyTodoList companyId={companyId} profile={profile} />
+        ) : view === "miesiac" ? (
           <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 20 }}>
             <div style={card}>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
@@ -591,7 +608,7 @@ export default function Calendar({ companyId, role, profile, onExit, onLogout })
                     companyBadge={isAll ? companiesMeta[ev.company_id] : null}
                     isOpenReminders={!!openReminders[ev.id]} onToggleReminders={() => toggleRemindersPanel(ev.id)}
                     reminders={remindersByEvent[ev.id] || []} addReminder={addReminder} removeReminder={removeReminder}
-                    isOpenChecklist={!!openChecklist[ev.id]} onToggleChecklist={() => toggleChecklistPanel(ev.id)}
+                    isOpenChecklist={!!openChecklist[ev.id]} onToggleChecklist={() => toggleChecklistPanel(ev.id)} onExpand={() => expandTaskDetails(ev.id)}
                     checklist={checklistByEvent[ev.id] || []} addChecklistItem={addChecklistItem}
                     toggleChecklistItem={toggleChecklistItem} removeChecklistItem={removeChecklistItem}
                     profile={profile}
@@ -664,7 +681,7 @@ function DayPanel({ date, dayEvents, showForm, setShowForm, titleRef, typeRef, c
               companyBadge={showCompanyBadge ? companiesMeta[ev.company_id] : null}
               isOpenReminders={!!openReminders[ev.id]} onToggleReminders={() => toggleRemindersPanel(ev.id)}
               reminders={remindersByEvent[ev.id] || []} addReminder={addReminder} removeReminder={removeReminder}
-              isOpenChecklist={!!openChecklist[ev.id]} onToggleChecklist={() => toggleChecklistPanel(ev.id)}
+              isOpenChecklist={!!openChecklist[ev.id]} onToggleChecklist={() => toggleChecklistPanel(ev.id)} onExpand={() => expandTaskDetails(ev.id)}
               checklist={checklistByEvent[ev.id] || []} addChecklistItem={addChecklistItem}
               toggleChecklistItem={toggleChecklistItem} removeChecklistItem={removeChecklistItem}
               profile={profile}
@@ -678,7 +695,7 @@ function DayPanel({ date, dayEvents, showForm, setShowForm, titleRef, typeRef, c
 
 function EventRow({ ev, showDate, toggleComplete, toggleStarred, removeEvent, isOpen, onToggleComments, comments, addComment, colorFor, nameFor, companyBadge,
   isOpenReminders, onToggleReminders, reminders, addReminder, removeReminder,
-  isOpenChecklist, onToggleChecklist, checklist, addChecklistItem, toggleChecklistItem, removeChecklistItem, profile }){
+  isOpenChecklist, onToggleChecklist, checklist, addChecklistItem, toggleChecklistItem, removeChecklistItem, profile, onExpand }){
   const meta = TYPE_META[ev.type] || TYPE_META.zadanie;
   const cat = CATEGORY_META[ev.category] || CATEGORY_META.inne;
   const userColor = colorFor(ev);
@@ -721,7 +738,7 @@ function EventRow({ ev, showDate, toggleComplete, toggleStarred, removeEvent, is
         </button>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-            <span style={{ fontWeight: 800, fontSize: 16.5, textDecoration: ev.completed ? "line-through" : "none", color: ev.completed ? "#a3a698" : "#3a2a1f" }}>{ev.title}</span>
+            <span onClick={onExpand} style={{ cursor: "pointer", fontWeight: 800, fontSize: 16.5, textDecoration: ev.completed ? "line-through" : "none", color: ev.completed ? "#a3a698" : "#3a2a1f" }}>{ev.title}</span>
             <button onClick={() => toggleStarred(ev)} style={{ background: "none", border: "none", cursor: "pointer", padding: 0, display: "flex" }} title="Oznacz jako ważne">
               <Star size={16} fill={ev.starred ? "#C5E548" : "none"} color={ev.starred ? "#C5E548" : "#c3bfae"} />
             </button>
