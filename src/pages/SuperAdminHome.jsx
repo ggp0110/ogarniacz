@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState, useCallback } from "react";
 import { supabase } from "../supabaseClient";
 import { pageWrap, card, inputStyle, saveBtn, addBtn, tabStyle, USER_COLOR_PALETTE } from "../theme";
-import { Building2, Plus, LogOut, UserPlus, ArrowRight, Loader2, Mail, LayoutGrid } from "lucide-react";
+import { Building2, Plus, LogOut, UserPlus, ArrowRight, Loader2, Mail, LayoutGrid, Send } from "lucide-react";
 
 export default function SuperAdminHome({ profile, onEnterCompany, onEnterAll, onLogout }){
   const [companies, setCompanies] = useState([]);
@@ -11,10 +11,37 @@ export default function SuperAdminHome({ profile, onEnterCompany, onEnterAll, on
   const [error, setError] = useState("");
   const [showAddCompany, setShowAddCompany] = useState(false);
   const [showAssign, setShowAssign] = useState(false);
+  const [sendingReminders, setSendingReminders] = useState(false);
+  const [reminderResult, setReminderResult] = useState(null);
   const newCompanyRef = useRef(null);
   const assignProfileRef = useRef(null);
   const assignCompanyRef = useRef(null);
   const assignRoleRef = useRef(null);
+
+  async function sendRemindersNow(){
+    setSendingReminders(true);
+    setReminderResult(null);
+    try {
+      const { data, error: err } = await supabase.functions.invoke("send-reminders", { method: "POST" });
+      if (err) {
+        // supabase-js czasem chowa treść błędu w err.context - próbujemy ją odczytać
+        let details = err.message || "Nieznany błąd";
+        try {
+          if (err.context && typeof err.context.json === "function") {
+            const body = await err.context.json();
+            details = body.error || body.message || JSON.stringify(body);
+          }
+        } catch (_) { /* ignoruj, zostaw details jak jest */ }
+        setReminderResult({ ok: false, message: details });
+      } else {
+        setReminderResult({ ok: true, message: data?.message || "Wysłano." });
+      }
+    } catch (e) {
+      setReminderResult({ ok: false, message: e.message || "Nie udało się połączyć z funkcją." });
+    } finally {
+      setSendingReminders(false);
+    }
+  }
 
   const loadAll = useCallback(async () => {
     setLoading(true);
@@ -94,6 +121,31 @@ export default function SuperAdminHome({ profile, onEnterCompany, onEnterAll, on
           <div style={{ fontSize: 12.5, color: "#5c4a1a" }}>
             W Supabase: Authentication → Add user → Invite. Po tym, jak dana osoba ustawi hasło, pojawi się poniżej na liście „Przypisz pracownika do firmy”.
           </div>
+        </div>
+
+        <div style={{ ...card, marginBottom: 20 }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 10 }}>
+            <div>
+              <div style={{ fontWeight: 800, fontSize: 14, color: "#3a2a1f", marginBottom: 2 }}>Przypomnienia (mail + push)</div>
+              <div style={{ fontSize: 12, color: "#8b6b5a" }}>
+                Wysyłają się automatycznie co 10 minut. Tu możesz sprawdzić od razu, czy działają.
+              </div>
+            </div>
+            <button onClick={sendRemindersNow} disabled={sendingReminders} style={saveBtn}>
+              <Send size={14} style={{ marginRight: 6 }} />
+              {sendingReminders ? "Wysyłanie…" : "Wyślij przypomnienia teraz"}
+            </button>
+          </div>
+          {reminderResult && (
+            <div style={{
+              marginTop: 10, padding: "8px 12px", borderRadius: 8, fontSize: 12.5,
+              background: reminderResult.ok ? "#eef5ec" : "#fdeceb",
+              color: reminderResult.ok ? "#3d6b2f" : "#d94a38",
+              whiteSpace: "pre-wrap", wordBreak: "break-word",
+            }}>
+              {reminderResult.ok ? "✓ " : "✗ "}{reminderResult.message}
+            </div>
+          )}
         </div>
 
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10, flexWrap: "wrap", gap: 8 }}>

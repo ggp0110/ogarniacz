@@ -1,9 +1,10 @@
 import React, { useEffect, useState, useMemo, useCallback, useRef } from "react";
 import { supabase } from "../supabaseClient";
 import { pageWrap, card, inputStyle, saveBtn, cancelBtn, addBtn, tabStyle, iconBtn, CATEGORY_META, TYPE_META, colorForIndex, USER_COLOR_PALETTE, pillBtn, pillCount, deleteBtn } from "../theme";
+import { isPushSupported, subscribeToPush, unsubscribeFromPush, getCurrentPushSubscription } from "../pushNotifications";
 import {
   ChevronLeft, ChevronRight, Plus, X, MessageCircle, Check, Users, CalendarDays,
-  ListChecks, Loader2, LogOut, Star, Lock, Building2, Settings, ArrowLeft, LayoutGrid, Bell, ListTodo
+  ListChecks, Loader2, LogOut, Star, Lock, Building2, Settings, ArrowLeft, LayoutGrid, Bell, ListTodo, BellRing
 } from "lucide-react";
 
 function pad(n){ return n.toString().padStart(2,"0"); }
@@ -419,6 +420,7 @@ export default function Calendar({ companyId, role, profile, onExit, onLogout })
             </div>
           </div>
           <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+            <PushNotificationButton profile={profile} />
             {!isAll && isBossOrAdmin && (
               <button onClick={() => setShowTeamPanel(s => !s)} style={tabStyle(showTeamPanel)}><Settings size={15} style={{ marginRight: 6 }} /> Zespół</button>
             )}
@@ -903,6 +905,56 @@ function TeamPanel({ companyId, team, onChanged }){
       <div style={{ fontSize: 11.5, color: "#a3a698", marginTop: 10 }}>
         Nowe osoby dodaje administrator (zaproszenie e-mailem), potem przypisuje je do tej firmy.
       </div>
+    </div>
+  );
+}
+
+function PushNotificationButton({ profile }){
+  const [status, setStatus] = useState("checking"); // checking | unsupported | off | on | error
+  const [errorMsg, setErrorMsg] = useState("");
+
+  useEffect(() => {
+    if (!isPushSupported()) { setStatus("unsupported"); return; }
+    getCurrentPushSubscription().then(sub => setStatus(sub ? "on" : "off")).catch(() => setStatus("off"));
+  }, []);
+
+  async function handleClick(){
+    if (status === "on") {
+      setStatus("checking");
+      try {
+        await unsubscribeFromPush(profile.id);
+        setStatus("off");
+      } catch (e) {
+        setStatus("on");
+      }
+      return;
+    }
+    setStatus("checking");
+    setErrorMsg("");
+    try {
+      await subscribeToPush(profile.id);
+      setStatus("on");
+    } catch (e) {
+      setStatus("error");
+      setErrorMsg(e.message || "Nie udało się włączyć powiadomień.");
+    }
+  }
+
+  if (status === "unsupported") {
+    return (
+      <span style={{ fontSize: 11.5, color: "#8b6b5a" }} title="Ta przeglądarka/urządzenie nie wspiera powiadomień push">
+        Powiadomienia niedostępne tutaj
+      </span>
+    );
+  }
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 2 }}>
+      <button onClick={handleClick} disabled={status === "checking"} style={tabStyle(status === "on")}>
+        {status === "on" ? <BellRing size={15} style={{ marginRight: 6 }} /> : <Bell size={15} style={{ marginRight: 6 }} />}
+        {status === "checking" ? "Chwila…" : status === "on" ? "Powiadomienia wł." : "Włącz powiadomienia"}
+      </button>
+      {status === "error" && <span style={{ fontSize: 11, color: "#d94a38", maxWidth: 220, textAlign: "right" }}>{errorMsg}</span>}
     </div>
   );
 }
