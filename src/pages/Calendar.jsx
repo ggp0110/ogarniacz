@@ -68,6 +68,7 @@ export default function Calendar({ companyId, role, profile, onExit, onLogout })
   const [filterCompany, setFilterCompany] = useState("wszystkie");
   const [formCompanyId, setFormCompanyId] = useState("");
   const [openReminders, setOpenReminders] = useState({});
+  const [badgeCounts, setBadgeCounts] = useState({ comments: {}, checklist: {}, reminders: {} });
   const [remindersByEvent, setRemindersByEvent] = useState({});
   const [openChecklist, setOpenChecklist] = useState({});
   const [checklistByEvent, setChecklistByEvent] = useState({});
@@ -76,6 +77,7 @@ export default function Calendar({ companyId, role, profile, onExit, onLogout })
   const typeRef = useRef(null);
   const categoryRef = useRef(null);
   const timeRef = useRef(null);
+  const endDateRef = useRef(null);
   const assigneeRef = useRef(null);
   const privateRef = useRef(null);
 
@@ -169,6 +171,34 @@ export default function Calendar({ companyId, role, profile, onExit, onLogout })
     else setEvents(data || []);
   }, [companyId, isAll, companiesMeta]);
 
+  const loadBadgeCounts = useCallback(async (eventIds) => {
+    if (!eventIds || eventIds.length === 0) { setBadgeCounts({ comments: {}, checklist: {}, reminders: {} }); return; }
+    const [{ data: c }, { data: ch }, { data: r }] = await Promise.all([
+      supabase.from("event_comments").select("event_id").in("event_id", eventIds),
+      supabase.from("checklist_items").select("event_id, done").in("event_id", eventIds),
+      supabase.from("reminders").select("event_id").in("event_id", eventIds),
+    ]);
+    const comments = {};
+    (c || []).forEach(row => { comments[row.event_id] = (comments[row.event_id] || 0) + 1; });
+    const checklist = {};
+    (ch || []).forEach(row => {
+      checklist[row.event_id] = checklist[row.event_id] || { done: 0, total: 0 };
+      checklist[row.event_id].total++;
+      if (row.done) checklist[row.event_id].done++;
+    });
+    const reminders = {};
+    (r || []).forEach(row => { reminders[row.event_id] = (reminders[row.event_id] || 0) + 1; });
+    setBadgeCounts({ comments, checklist, reminders });
+  }, []);
+
+  const eventIdsKey = (events || []).map(e => e.id).join(",");
+  useEffect(() => {
+    loadBadgeCounts(eventIdsKey ? eventIdsKey.split(",") : []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [eventIdsKey]);
+  const loadBadgeCountsRef = useRef(() => loadBadgeCounts(eventIdsKey ? eventIdsKey.split(",") : []));
+  useEffect(() => { loadBadgeCountsRef.current = () => loadBadgeCounts(eventIdsKey ? eventIdsKey.split(",") : []); }, [loadBadgeCounts, eventIdsKey]);
+
   useEffect(() => { loadMeta(); }, [loadMeta]);
   useEffect(() => { loadEvents(); }, [loadEvents]);
 
@@ -186,10 +216,15 @@ export default function Calendar({ companyId, role, profile, onExit, onLogout })
       .on("postgres_changes", { event: "*", schema: "public", table: "event_comments" }, (payload) => {
         const evId = payload.new?.event_id || payload.old?.event_id;
         if (evId && openCommentsRef.current[evId]) loadComments(evId);
+        loadBadgeCountsRef.current();
       })
       .on("postgres_changes", { event: "*", schema: "public", table: "checklist_items" }, (payload) => {
         const evId = payload.new?.event_id || payload.old?.event_id;
         if (evId && openChecklistRef.current[evId]) loadChecklist(evId);
+        loadBadgeCountsRef.current();
+      })
+      .on("postgres_changes", { event: "*", schema: "public", table: "reminders" }, () => {
+        loadBadgeCountsRef.current();
       })
       .subscribe();
     return () => { supabase.removeChannel(channel); };
@@ -350,7 +385,20 @@ export default function Calendar({ companyId, role, profile, onExit, onLogout })
 
   const eventsByDay = useMemo(() => {
     const map = {};
-    visibleEvents.forEach(ev => { map[ev.event_date] = map[ev.event_date] || []; map[ev.event_date].push(ev); });
+    visibleEvents.forEach(ev => {
+      const start = ev.event_date;
+      const end = ev.event_end_date && ev.event_end_date > ev.event_date ? ev.event_end_date : ev.event_date;
+      let cursorDate = new Date(start + "T00:00:00");
+      const endDate = new Date(end + "T00:00:00");
+      let guard = 0;
+      while (cursorDate <= endDate && guard < 366) { // zabezpieczenie przed nieskończoną pętlą
+        const key = toKey(cursorDate);
+        map[key] = map[key] || [];
+        map[key].push(ev);
+        cursorDate.setDate(cursorDate.getDate() + 1);
+        guard++;
+      }
+    });
     Object.values(map).forEach(list => list.sort((a,b) => (b.starred?1:0)-(a.starred?1:0) || (a.event_time||"").localeCompare(b.event_time||"")));
     return map;
   }, [visibleEvents]);
@@ -370,12 +418,14 @@ export default function Calendar({ companyId, role, profile, onExit, onLogout })
     const targetCompanyId = isAll ? formCompanyId : companyId;
     if (!targetCompanyId) { setFormError("Wybierz firmę."); return; }
     setFormError("");
+    const endDateVal = endDateRef.current?.value || "";
     const payload = {
       company_id: targetCompanyId,
       title,
       type: typeRef.current?.value || "zadanie",
       category: categoryRef.current?.value || "inne",
       event_date: selectedKey,
+      event_end_date: endDateVal && endDateVal > selectedKey ? endDateVal : null,
       event_time: timeRef.current?.value || null,
       assignee_id: assigneeRef.current?.value || null,
       created_by: profile.id,
@@ -386,6 +436,7 @@ export default function Calendar({ companyId, role, profile, onExit, onLogout })
     setEvents(prev => [...(prev || []), data]);
     if (titleRef.current) titleRef.current.value = "";
     if (timeRef.current) timeRef.current.value = "";
+    if (endDateRef.current) endDateRef.current.value = "";
     if (privateRef.current) privateRef.current.checked = false;
     setShowForm(false);
   }
@@ -534,7 +585,7 @@ export default function Calendar({ companyId, role, profile, onExit, onLogout })
 
             <DayPanel
               date={selectedDate} dayEvents={dayEvents} showForm={showForm} setShowForm={setShowForm}
-              titleRef={titleRef} typeRef={typeRef} categoryRef={categoryRef} timeRef={timeRef} assigneeRef={assigneeRef} privateRef={privateRef}
+              titleRef={titleRef} typeRef={typeRef} categoryRef={categoryRef} timeRef={timeRef} endDateRef={endDateRef} assigneeRef={assigneeRef} privateRef={privateRef}
               team={rosterForForm} canPrivate={canPrivateForForm} formError={formError} addEvent={addEvent}
               toggleComplete={toggleComplete} toggleStarred={toggleStarred} removeEvent={removeEvent}
               openComments={openComments} toggleCommentsPanel={toggleCommentsPanel}
@@ -546,7 +597,7 @@ export default function Calendar({ companyId, role, profile, onExit, onLogout })
               openChecklist={openChecklist} toggleChecklistPanel={toggleChecklistPanel}
               checklistByEvent={checklistByEvent} addChecklistItem={addChecklistItem}
               toggleChecklistItem={toggleChecklistItem} removeChecklistItem={removeChecklistItem}
-              profile={profile}
+              profile={profile} badgeCounts={badgeCounts} expandTaskDetails={expandTaskDetails}
             />
           </div>
         ) : view === "tydzien" ? (
@@ -611,7 +662,7 @@ export default function Calendar({ companyId, role, profile, onExit, onLogout })
                     isOpenChecklist={!!openChecklist[ev.id]} onToggleChecklist={() => toggleChecklistPanel(ev.id)} onExpand={() => expandTaskDetails(ev.id)}
                     checklist={checklistByEvent[ev.id] || []} addChecklistItem={addChecklistItem}
                     toggleChecklistItem={toggleChecklistItem} removeChecklistItem={removeChecklistItem}
-                    profile={profile}
+                    profile={profile} badgeCounts={badgeCounts}
                   />
                 ))}
               </div>
@@ -623,11 +674,11 @@ export default function Calendar({ companyId, role, profile, onExit, onLogout })
   );
 }
 
-function DayPanel({ date, dayEvents, showForm, setShowForm, titleRef, typeRef, categoryRef, timeRef, assigneeRef, privateRef,
+function DayPanel({ date, dayEvents, showForm, setShowForm, titleRef, typeRef, categoryRef, timeRef, endDateRef, assigneeRef, privateRef,
   team, canPrivate, formError, addEvent, toggleComplete, toggleStarred, removeEvent, openComments, toggleCommentsPanel,
   commentsByEvent, addComment, colorFor, nameFor, isAll, companiesMeta, formCompanyId, setFormCompanyId, showCompanyBadge,
   openReminders, toggleRemindersPanel, remindersByEvent, addReminder, removeReminder,
-  openChecklist, toggleChecklistPanel, checklistByEvent, addChecklistItem, toggleChecklistItem, removeChecklistItem, profile }){
+  openChecklist, toggleChecklistPanel, checklistByEvent, addChecklistItem, toggleChecklistItem, removeChecklistItem, profile, badgeCounts, expandTaskDetails }){
   const label = date.toLocaleDateString("pl-PL", { weekday: "long", day: "numeric", month: "long" });
   return (
     <div style={card}>
@@ -652,6 +703,10 @@ function DayPanel({ date, dayEvents, showForm, setShowForm, titleRef, typeRef, c
               {Object.entries(CATEGORY_META).map(([k,v]) => <option key={k} value={k}>{v.label}</option>)}
             </select>
             <input ref={timeRef} type="time" style={{ ...inputStyle, flex: "1 1 100px" }} />
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+            <label style={{ fontSize: 11.5, color: "#8b6b5a" }}>Data zakończenia (opcjonalnie — dla wydarzeń trwających kilka dni, np. konferencji)</label>
+            <input ref={endDateRef} type="date" min={toKey(date)} style={inputStyle} />
           </div>
           <select ref={assigneeRef} defaultValue="" style={inputStyle} key={formCompanyId}>
             <option value="">Cały zespół</option>
@@ -684,7 +739,7 @@ function DayPanel({ date, dayEvents, showForm, setShowForm, titleRef, typeRef, c
               isOpenChecklist={!!openChecklist[ev.id]} onToggleChecklist={() => toggleChecklistPanel(ev.id)} onExpand={() => expandTaskDetails(ev.id)}
               checklist={checklistByEvent[ev.id] || []} addChecklistItem={addChecklistItem}
               toggleChecklistItem={toggleChecklistItem} removeChecklistItem={removeChecklistItem}
-              profile={profile}
+              profile={profile} badgeCounts={badgeCounts}
             />
           ))}
         </div>
@@ -695,13 +750,21 @@ function DayPanel({ date, dayEvents, showForm, setShowForm, titleRef, typeRef, c
 
 function EventRow({ ev, showDate, toggleComplete, toggleStarred, removeEvent, isOpen, onToggleComments, comments, addComment, colorFor, nameFor, companyBadge,
   isOpenReminders, onToggleReminders, reminders, addReminder, removeReminder,
-  isOpenChecklist, onToggleChecklist, checklist, addChecklistItem, toggleChecklistItem, removeChecklistItem, profile, onExpand }){
+  isOpenChecklist, onToggleChecklist, checklist, addChecklistItem, toggleChecklistItem, removeChecklistItem, profile, onExpand, badgeCounts }){
   const meta = TYPE_META[ev.type] || TYPE_META.zadanie;
   const cat = CATEGORY_META[ev.category] || CATEGORY_META.inne;
   const userColor = colorFor(ev);
   const commentRef = useRef(null);
   const checklistInputRef = useRef(null);
   const [selectedReminder, setSelectedReminder] = React.useState("");
+
+  // Liczniki-znaczniki widoczne OD RAZU (bez otwierania panelu) - pobrane zbiorczo dla wszystkich zadań.
+  // Gdy panel jest już otwarty i wczytany, korzystamy z dokładnych danych z niego.
+  const badgeChecklist = badgeCounts?.checklist?.[ev.id];
+  const checklistCount = isOpenChecklist ? checklist.length : (badgeChecklist?.total || 0);
+  const checklistDone = isOpenChecklist ? checklist.filter(i => i.done).length : (badgeChecklist?.done || 0);
+  const commentCount = isOpen ? comments.length : (badgeCounts?.comments?.[ev.id] || 0);
+  const reminderCount = isOpenReminders ? reminders.length : (badgeCounts?.reminders?.[ev.id] || 0);
 
   function submitComment(){
     const val = commentRef.current?.value || "";
@@ -750,7 +813,8 @@ function EventRow({ ev, showDate, toggleComplete, toggleStarred, removeEvent, is
             {ev.is_private && <span style={{ display: "flex", alignItems: "center", gap: 3, fontSize: 11.5, fontWeight: 800, color: "#6b6a5e", background: "#f0ede2", padding: "3px 9px", borderRadius: 20 }}><Lock size={10} /> Prywatne</span>}
           </div>
           <div style={{ fontSize: 13, color: "#8b8f86", marginTop: 5, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-            {showDate && <span>{ev.event_date}</span>}
+            {showDate && <span>{ev.event_date}{ev.event_end_date && ev.event_end_date > ev.event_date ? ` – ${ev.event_end_date}` : ""}</span>}
+            {!showDate && ev.event_end_date && ev.event_end_date > ev.event_date && <span>do {ev.event_end_date}</span>}
             {ev.event_time && <span>{ev.event_time.slice(0,5)}</span>}
             <span style={{ display: "flex", alignItems: "center", gap: 4 }}><span style={{ width: 8, height: 8, borderRadius: "50%", background: userColor }} />{nameFor(ev)}</span>
           </div>
@@ -758,20 +822,20 @@ function EventRow({ ev, showDate, toggleComplete, toggleStarred, removeEvent, is
       </div>
 
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10, paddingLeft: 30 }}>
-        <button onClick={onToggleChecklist} style={pillBtn(checklist.length > 0 ? "#4d3658" : "#d4c4b0")}>
-          <ListTodo size={14} color={checklist.length > 0 ? "#4d3658" : "#8b6b5a"} />
+        <button onClick={onToggleChecklist} style={pillBtn(checklistCount > 0 ? "#4d3658" : "#d4c4b0")}>
+          <ListTodo size={14} color={checklistCount > 0 ? "#4d3658" : "#8b6b5a"} />
           Checklista
-          {checklist.length > 0 && <span style={pillCount("#4d3658")}>{doneCount}/{checklist.length}</span>}
+          {checklistCount > 0 && <span style={pillCount("#4d3658")}>{checklistDone}/{checklistCount}</span>}
         </button>
-        <button onClick={onToggleComments} style={pillBtn(comments.length > 0 ? "#9cb49a" : "#d4c4b0")}>
-          <MessageCircle size={14} color={comments.length > 0 ? "#5f7a68" : "#8b6b5a"} />
+        <button onClick={onToggleComments} style={pillBtn(commentCount > 0 ? "#9cb49a" : "#d4c4b0")}>
+          <MessageCircle size={14} color={commentCount > 0 ? "#5f7a68" : "#8b6b5a"} />
           Komentarze
-          {comments.length > 0 && <span style={pillCount("#9cb49a")}>{comments.length}</span>}
+          {commentCount > 0 && <span style={pillCount("#9cb49a")}>{commentCount}</span>}
         </button>
-        <button onClick={onToggleReminders} style={pillBtn(reminders.length > 0 ? "#33401a" : "#d4c4b0")}>
-          <Bell size={14} color={reminders.length > 0 ? "#8a9c1a" : "#8b6b5a"} />
+        <button onClick={onToggleReminders} style={pillBtn(reminderCount > 0 ? "#33401a" : "#d4c4b0")}>
+          <Bell size={14} color={reminderCount > 0 ? "#8a9c1a" : "#8b6b5a"} />
           Przypomnienia
-          {reminders.length > 0 && <span style={pillCount("#C5E548")}>{reminders.length}</span>}
+          {reminderCount > 0 && <span style={pillCount("#C5E548")}>{reminderCount}</span>}
         </button>
         <button onClick={() => removeEvent(ev.id)} style={{ ...deleteBtn, marginLeft: "auto" }}>
           <X size={14} /> Usuń
