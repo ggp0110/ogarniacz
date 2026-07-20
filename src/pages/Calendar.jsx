@@ -209,8 +209,7 @@ export default function Calendar({ companyId, role, profile, onExit, onLogout })
     const { data } = await supabase
       .from("reminders")
       .select("*")
-      .eq("event_id", eventId)
-      .eq("user_id", profile.id);
+      .eq("event_id", eventId);
     setRemindersByEvent(prev => ({ ...prev, [eventId]: data || [] }));
   }
 
@@ -309,7 +308,7 @@ export default function Calendar({ companyId, role, profile, onExit, onLogout })
       }
 
       const userEmail = profile.email;
-      const { error: err } = await supabase.from("reminders").insert({
+      const { error: err } = await supabase.from("reminders").upsert({
         event_id: eventId,
         user_id: profile.id,
         user_email: userEmail,
@@ -318,7 +317,8 @@ export default function Calendar({ companyId, role, profile, onExit, onLogout })
         event_time: eventTime,
         reminder_type: reminderType,
         send_at: sendAt.toISOString(),
-      });
+        sent: false,
+      }, { onConflict: "event_id,reminder_type" });
 
       if (err) throw err;
       await loadReminders(eventId);
@@ -842,7 +842,9 @@ function EventRow({ ev, showDate, toggleComplete, toggleStarred, removeEvent, is
           )}
 
           <div style={{ fontSize: 11, color: "#8b8f86", fontStyle: "italic" }}>
-            ✓ Maile będą wysłane automatycznie na: {profile.email}
+            ✓ {ev.assignee_id
+              ? `Wysyłane (mail + push) do: ${nameFor(ev)}`
+              : "Wysyłane (mail + push) do całego zespołu tej firmy"}
           </div>
         </div>
       )}
