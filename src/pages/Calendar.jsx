@@ -38,6 +38,28 @@ function buildWeekGrid(date) {
   return week;
 }
 
+function timeToMinutes(value, fallback = 9 * 60) {
+  if (!value || !/^\d{2}:\d{2}/.test(value)) return fallback;
+  const [hours, minutes] = value.slice(0, 5).split(":").map(Number);
+  return hours * 60 + minutes;
+}
+
+function minutesToTime(value) {
+  return `${pad(Math.floor(value / 60) % 24)}:${pad(value % 60)}`;
+}
+
+function hexWithAlpha(hex, alpha) {
+  const normalized = (hex || "#6b6a5e").replace("#", "");
+  const value = normalized.length === 3
+    ? normalized.split("").map(char => char + char).join("")
+    : normalized;
+  const number = parseInt(value, 16);
+  const red = (number >> 16) & 255;
+  const green = (number >> 8) & 255;
+  const blue = number & 255;
+  return `rgba(${red}, ${green}, ${blue}, ${alpha})`;
+}
+
 const MONTHS_PL = ["Styczeń","Luty","Marzec","Kwiecień","Maj","Czerwiec","Lipiec","Sierpień","Wrzesień","Październik","Listopad","Grudzień"];
 const DAYS_PL = ["Pon","Wt","Śr","Czw","Pt","Sob","Nd"];
 
@@ -77,6 +99,7 @@ export default function Calendar({ companyId, role, profile, onExit, onLogout })
   const typeRef = useRef(null);
   const categoryRef = useRef(null);
   const timeRef = useRef(null);
+  const endTimeRef = useRef(null);
   const endDateRef = useRef(null);
   const assigneeRef = useRef(null);
   const privateRef = useRef(null);
@@ -427,6 +450,7 @@ export default function Calendar({ companyId, role, profile, onExit, onLogout })
       event_date: selectedKey,
       event_end_date: endDateVal && endDateVal > selectedKey ? endDateVal : null,
       event_time: timeRef.current?.value || null,
+      event_end_time: endTimeRef.current?.value || null,
       assignee_id: assigneeRef.current?.value || null,
       created_by: profile.id,
       is_private: canPrivateForForm ? !!privateRef.current?.checked : false,
@@ -436,6 +460,7 @@ export default function Calendar({ companyId, role, profile, onExit, onLogout })
     setEvents(prev => [...(prev || []), data]);
     if (titleRef.current) titleRef.current.value = "";
     if (timeRef.current) timeRef.current.value = "";
+    if (endTimeRef.current) endTimeRef.current.value = "";
     if (endDateRef.current) endDateRef.current.value = "";
     if (privateRef.current) privateRef.current.checked = false;
     setShowForm(false);
@@ -621,7 +646,7 @@ export default function Calendar({ companyId, role, profile, onExit, onLogout })
 
             <DayPanel
               date={selectedDate} dayEvents={dayEvents} showForm={showForm} setShowForm={setShowForm}
-              titleRef={titleRef} typeRef={typeRef} categoryRef={categoryRef} timeRef={timeRef} endDateRef={endDateRef} assigneeRef={assigneeRef} privateRef={privateRef}
+              titleRef={titleRef} typeRef={typeRef} categoryRef={categoryRef} timeRef={timeRef} endTimeRef={endTimeRef} endDateRef={endDateRef} assigneeRef={assigneeRef} privateRef={privateRef}
               team={rosterForForm} canPrivate={canPrivateForForm} formError={formError} addEvent={addEvent}
               toggleComplete={toggleComplete} toggleStarred={toggleStarred} removeEvent={removeEvent} updateEvent={updateEvent} profileNameById={profileNameById}
               openComments={openComments} toggleCommentsPanel={toggleCommentsPanel}
@@ -646,36 +671,13 @@ export default function Calendar({ companyId, role, profile, onExit, onLogout })
               <button onClick={() => setCursor(new Date(cursor.getTime() + 7 * 24 * 60 * 60 * 1000))} style={iconBtn}><ChevronRight size={18} /></button>
             </div>
 
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 8, marginBottom: 14 }}>
-              {week.map((d, i) => {
-                const key = toKey(d);
-                const dayList = eventsByDay[key] || [];
-                const isToday = sameDay(d, new Date());
-                return (
-                  <div key={i} style={{ background: isToday ? "#fef3d4" : "#fff", border: `1px solid ${isToday ? "#C5E548" : "#d4c4b0"}`, borderRadius: 10, padding: 12, minHeight: 200 }}>
-                    <div style={{ fontSize: 12, fontWeight: 700, color: isToday ? "#C5E548" : "#8b8f86", marginBottom: 8, textTransform: "uppercase" }}>
-                      {DAYS_PL[d.getDay() === 0 ? 6 : d.getDay() - 1]} {d.getDate()}
-                    </div>
-                    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                      {dayList.length === 0 ? (
-                        <div style={{ color: "#b0a89a", fontSize: 12, fontStyle: "italic" }}>Brak zdarzeń</div>
-                      ) : (
-                        dayList.map(ev => (
-                          <div key={ev.id} onClick={() => { setSelectedDate(d); setView("miesiac"); }} style={{
-                            background: "#f9f6f0", border: `2px solid ${eventColor(ev)}`, borderRadius: 8, padding: 8, cursor: "pointer",
-                            fontSize: 11.5, color: ev.completed ? "#a3a698" : "#22301f", textDecoration: ev.completed ? "line-through" : "none",
-                            opacity: ev.completed ? 0.6 : 1
-                          }}>
-                            <div style={{ fontWeight: 700, marginBottom: 2 }}>{ev.title}</div>
-                            {ev.event_time && <div style={{ fontSize: 10.5, color: "#8b8f86" }}>{ev.event_time.slice(0,5)}</div>}
-                          </div>
-                        ))
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
+            <WeeklyTimeline
+              week={week}
+              eventsByDay={eventsByDay}
+              eventColor={eventColor}
+              nameFor={eventAssigneeName}
+              onEventClick={(date) => { setSelectedDate(date); setView("miesiac"); }}
+            />
 
             <button onClick={() => { setSelectedDate(new Date()); setShowForm(true); setView("miesiac"); }} style={addBtn}>
               <Plus size={15} style={{ marginRight: 4 }} /> Dodaj zdarzenie
@@ -712,7 +714,115 @@ export default function Calendar({ companyId, role, profile, onExit, onLogout })
   );
 }
 
-function DayPanel({ date, dayEvents, showForm, setShowForm, titleRef, typeRef, categoryRef, timeRef, endDateRef, assigneeRef, privateRef,
+function WeeklyTimeline({ week, eventsByDay, eventColor, nameFor, onEventClick }) {
+  const firstHour = 7;
+  const lastHour = 20;
+  const pixelsPerHour = 72;
+  const timelineHeight = (lastHour - firstHour) * pixelsPerHour;
+  const hours = Array.from({ length: lastHour - firstHour + 1 }, (_, index) => firstHour + index);
+
+  return (
+    <div className="weekly-calendar-wrap">
+      <div className="weekly-calendar" style={{ minWidth: 900 }}>
+        <div className="weekly-time-corner">Czas</div>
+        {week.map((date, index) => {
+          const isToday = sameDay(date, new Date());
+          return <div key={index} className={`weekly-day-heading${isToday ? " is-today" : ""}`}>
+            <span>{DAYS_PL[date.getDay() === 0 ? 6 : date.getDay() - 1]}</span>
+            <strong>{date.getDate()}</strong>
+          </div>;
+        })}
+
+        <div className="weekly-hours" style={{ height: timelineHeight }}>
+          {hours.map(hour => <span key={hour} style={{ top: (hour - firstHour) * pixelsPerHour - 8 }}>{pad(hour)}:00</span>)}
+        </div>
+        {week.map((date, index) => (
+          <WeekDayColumn
+            key={index}
+            date={date}
+            events={eventsByDay[toKey(date)] || []}
+            firstHour={firstHour}
+            pixelsPerHour={pixelsPerHour}
+            height={timelineHeight}
+            eventColor={eventColor}
+            nameFor={nameFor}
+            onEventClick={onEventClick}
+          />
+        ))}
+      </div>
+      <div className="weekly-calendar-note">Nakładające się zadania są widoczne obok siebie i oznaczone przenikającymi się kolorami.</div>
+    </div>
+  );
+}
+
+function WeekDayColumn({ date, events, firstHour, pixelsPerHour, height, eventColor, nameFor, onEventClick }) {
+  const timed = events.filter(event => !!event.event_time);
+  const allDay = events.filter(event => !event.event_time);
+  const placements = timed
+    .map(event => {
+      const start = timeToMinutes(event.event_time);
+      const end = Math.max(start + 30, timeToMinutes(event.event_end_time, start + 60));
+      return { event, start, end, lane: 0, laneCount: 1, overlapColors: [] };
+    })
+    .sort((a, b) => a.start - b.start || a.end - b.end);
+
+  const groups = [];
+  placements.forEach(item => {
+    const group = groups.find(candidate => candidate.some(placed => item.start < placed.end && item.end > placed.start));
+    if (group) group.push(item); else groups.push([item]);
+  });
+  groups.forEach(group => {
+    const lanes = [];
+    group.forEach(item => {
+      let lane = lanes.findIndex(laneItems => laneItems.every(placed => item.start >= placed.end || item.end <= placed.start));
+      if (lane < 0) lane = lanes.length;
+      lanes[lane] = lanes[lane] || [];
+      lanes[lane].push(item);
+      item.lane = lane;
+    });
+    group.forEach(item => {
+      item.laneCount = lanes.length;
+      item.overlapColors = group.filter(other => other !== item && item.start < other.end && item.end > other.start).map(other => eventColor(other.event));
+    });
+  });
+
+  const isToday = sameDay(date, new Date());
+  return (
+    <div className={`weekly-day-column${isToday ? " is-today" : ""}`} style={{ height }}>
+      {Array.from({ length: height / pixelsPerHour + 1 }, (_, index) => <div className="weekly-hour-line" key={index} style={{ top: index * pixelsPerHour }} />)}
+      {allDay.length > 0 && <div className="weekly-all-day">{allDay.map(event => <span key={event.id} title={`${event.title} · ${nameFor(event)}`} style={{ borderColor: eventColor(event) }}>{event.title}</span>)}</div>}
+      {placements.map(({ event, start, end, lane, laneCount, overlapColors }) => {
+        const color = eventColor(event);
+        const top = ((start - firstHour * 60) / 60) * pixelsPerHour;
+        const blockHeight = Math.max(42, ((end - start) / 60) * pixelsPerHour);
+        const width = `calc(${100 / laneCount}% - 8px)`;
+        const left = `calc(${(lane / laneCount) * 100}% + 4px)`;
+        const blendColor = overlapColors[0];
+        return <button
+          key={event.id}
+          type="button"
+          className="weekly-event"
+          onClick={() => onEventClick(date)}
+          title={`${event.title} · ${nameFor(event)}`}
+          style={{
+            top: Math.max(0, top), height: blockHeight, width, left,
+            borderColor: color,
+            background: blendColor
+              ? `linear-gradient(135deg, ${hexWithAlpha(color, .94)} 0%, ${hexWithAlpha(color, .94)} 58%, ${hexWithAlpha(blendColor, .72)} 100%)`
+              : `linear-gradient(135deg, ${hexWithAlpha(color, .92)}, ${hexWithAlpha(color, .72)})`,
+            opacity: event.completed ? .58 : 1,
+          }}
+        >
+          <span className="weekly-event-time">{event.event_time.slice(0, 5)}–{event.event_end_time ? event.event_end_time.slice(0, 5) : minutesToTime(end)}</span>
+          <strong>{event.title}</strong>
+          <span className="weekly-event-owner"><i style={{ background: color }} />{nameFor(event)}</span>
+        </button>;
+      })}
+    </div>
+  );
+}
+
+function DayPanel({ date, dayEvents, showForm, setShowForm, titleRef, typeRef, categoryRef, timeRef, endTimeRef, endDateRef, assigneeRef, privateRef,
   team, canPrivate, formError, addEvent, toggleComplete, toggleStarred, removeEvent, openComments, toggleCommentsPanel,
   commentsByEvent, addComment, colorFor, nameFor, isAll, companiesMeta, formCompanyId, setFormCompanyId, showCompanyBadge,
   openReminders, toggleRemindersPanel, remindersByEvent, addReminder, removeReminder,
@@ -740,7 +850,8 @@ function DayPanel({ date, dayEvents, showForm, setShowForm, titleRef, typeRef, c
             <select ref={categoryRef} defaultValue="inne" style={{ ...inputStyle, flex: "1 1 140px" }}>
               {Object.entries(CATEGORY_META).map(([k,v]) => <option key={k} value={k}>{v.label}</option>)}
             </select>
-            <input ref={timeRef} type="time" style={{ ...inputStyle, flex: "1 1 100px" }} />
+            <input ref={timeRef} type="time" aria-label="Godzina rozpoczęcia" title="Godzina rozpoczęcia" style={{ ...inputStyle, flex: "1 1 100px" }} />
+            <input ref={endTimeRef} type="time" aria-label="Godzina zakończenia" title="Godzina zakończenia" style={{ ...inputStyle, flex: "1 1 100px" }} />
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
             <label style={{ fontSize: 11.5, color: "#8b6b5a" }}>Data zakończenia (opcjonalnie — dla wydarzeń trwających kilka dni, np. konferencji)</label>
@@ -801,6 +912,7 @@ function EventRow({ ev, showDate, toggleComplete, toggleStarred, removeEvent, up
   const editTypeRef = useRef(null);
   const editCategoryRef = useRef(null);
   const editTimeRef = useRef(null);
+  const editEndTimeRef = useRef(null);
   const editEndDateRef = useRef(null);
   const editAssigneeRef = useRef(null);
   const editPrivateRef = useRef(null);
@@ -847,6 +959,7 @@ function EventRow({ ev, showDate, toggleComplete, toggleStarred, removeEvent, up
       type: editTypeRef.current?.value || "zadanie",
       category: editCategoryRef.current?.value || "inne",
       event_time: editTimeRef.current?.value || null,
+      event_end_time: editEndTimeRef.current?.value || null,
       event_end_date: endDateVal && endDateVal > ev.event_date ? endDateVal : null,
       assignee_id: editAssigneeRef.current?.value || null,
       is_private: canPrivate ? !!editPrivateRef.current?.checked : ev.is_private,
@@ -869,7 +982,8 @@ function EventRow({ ev, showDate, toggleComplete, toggleStarred, removeEvent, up
             <select ref={editCategoryRef} defaultValue={ev.category} style={{ ...inputStyle, flex: "1 1 140px" }}>
               {Object.entries(CATEGORY_META).map(([k,v]) => <option key={k} value={k}>{v.label}</option>)}
             </select>
-            <input ref={editTimeRef} type="time" defaultValue={ev.event_time ? ev.event_time.slice(0,5) : ""} style={{ ...inputStyle, flex: "1 1 100px" }} />
+            <input ref={editTimeRef} type="time" defaultValue={ev.event_time ? ev.event_time.slice(0,5) : ""} aria-label="Godzina rozpoczęcia" title="Godzina rozpoczęcia" style={{ ...inputStyle, flex: "1 1 100px" }} />
+            <input ref={editEndTimeRef} type="time" defaultValue={ev.event_end_time ? ev.event_end_time.slice(0,5) : ""} aria-label="Godzina zakończenia" title="Godzina zakończenia" style={{ ...inputStyle, flex: "1 1 100px" }} />
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
             <label style={{ fontSize: 11.5, color: "#8b6b5a" }}>Data zakończenia (dla wydarzeń wielodniowych)</label>

@@ -1,6 +1,28 @@
 * { box-sizing: border-box; }
 body { margin: 0; font-family: 'Nunito', sans-serif; background: #f7f4ee; }
 
+.weekly-calendar-wrap { overflow-x: auto; padding-bottom: 4px; }
+.weekly-calendar { display: grid; grid-template-columns: 58px repeat(7, minmax(116px, 1fr)); border: 1px solid #d4c4b0; border-radius: 12px; overflow: hidden; background: #fff; }
+.weekly-time-corner, .weekly-day-heading { min-height: 58px; padding: 10px 8px; border-bottom: 1px solid #d4c4b0; background: #fbf9f3; }
+.weekly-time-corner { color: #8b8f86; font-size: 11px; font-weight: 800; text-transform: uppercase; }
+.weekly-day-heading { border-left: 1px solid #e8e2d8; color: #8b6b5a; display: flex; flex-direction: column; gap: 1px; font-size: 11px; font-weight: 800; text-transform: uppercase; }
+.weekly-day-heading strong { color: #22301f; font-size: 22px; line-height: 1; }
+.weekly-day-heading.is-today { background: #fef3d4; box-shadow: inset 0 -3px 0 #C5E548; }
+.weekly-hours { position: relative; background: #fbf9f3; border-right: 1px solid #d4c4b0; }
+.weekly-hours span { position: absolute; right: 8px; color: #a3a698; font-size: 10px; transform: translateY(-50%); }
+.weekly-day-column { position: relative; min-width: 0; border-right: 1px solid #e8e2d8; background: #fff; }
+.weekly-day-column.is-today { background: #fffdf5; }
+.weekly-hour-line { position: absolute; right: 0; left: 0; border-top: 1px solid #eee9df; pointer-events: none; }
+.weekly-event { position: absolute; z-index: 2; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; overflow: hidden; padding: 6px 7px; border: 1px solid; border-left-width: 4px; border-radius: 7px; box-shadow: 0 3px 8px rgba(54, 42, 31, .12); color: #22301f; cursor: pointer; font-family: inherit; text-align: left; transition: transform .15s ease, box-shadow .15s ease; }
+.weekly-event:hover { z-index: 4; transform: translateY(-1px); box-shadow: 0 6px 14px rgba(54, 42, 31, .2); }
+.weekly-event-time { font-size: 9.5px; font-weight: 800; letter-spacing: .02em; }
+.weekly-event strong { width: 100%; font-size: 11.5px; line-height: 1.15; overflow: hidden; text-overflow: ellipsis; }
+.weekly-event-owner { display: flex; align-items: center; gap: 4px; width: 100%; overflow: hidden; font-size: 9.5px; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
+.weekly-event-owner i { width: 7px; height: 7px; flex: 0 0 auto; border: 1px solid rgba(255,255,255,.8); border-radius: 50%; }
+.weekly-all-day { position: absolute; z-index: 3; top: 3px; right: 3px; left: 3px; display: flex; flex-direction: column; gap: 3px; pointer-events: none; }
+.weekly-all-day span { overflow: hidden; padding: 3px 5px; border-left: 3px solid; border-radius: 4px; background: rgba(255,255,255,.9); color: #5c4a1a; font-size: 9px; font-weight: 800; text-overflow: ellipsis; white-space: nowrap; }
+.weekly-calendar-note { margin: 9px 0 0 58px; color: #8b8f86; font-size: 11px; }
+
 @media (max-width: 640px) {
   .app-shell { padding: 14px 8px 40px !important; }
   .day-grid-cell { min-height: 46px !important; padding: 3px !important; }
@@ -10,6 +32,7 @@ body { margin: 0; font-family: 'Nunito', sans-serif; background: #f7f4ee; }
   .top-header { gap: 10px !important; }
   .top-header-title { font-size: 19px !important; }
   .toolbar-row button { padding: 7px 10px !important; font-size: 12px !important; }
+  .weekly-calendar-wrap { margin-right: -4px; }
 }
 
 @media (max-width: 420px) {
