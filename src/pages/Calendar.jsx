@@ -5,7 +5,7 @@ import { isPushSupported, subscribeToPush, unsubscribeFromPush, getCurrentPushSu
 import CompanyTodoList from "../components/CompanyTodoList.jsx";
 import {
   ChevronLeft, ChevronRight, Plus, X, MessageCircle, Check, Users, CalendarDays,
-  ListChecks, Loader2, LogOut, Star, Lock, Building2, Settings, ArrowLeft, LayoutGrid, Bell, ListTodo, BellRing, ClipboardList
+  ListChecks, Loader2, LogOut, Star, Lock, Building2, Settings, ArrowLeft, LayoutGrid, Bell, ListTodo, BellRing, ClipboardList, Pencil
 } from "lucide-react";
 
 function pad(n){ return n.toString().padStart(2,"0"); }
@@ -459,6 +459,42 @@ export default function Calendar({ companyId, role, profile, onExit, onLogout })
     if (err) { setError(err.message); loadEvents(); }
   }
 
+  async function updateEvent(id, patch){
+    const fullPatch = { ...patch, updated_by: profile.id, updated_at: new Date().toISOString() };
+    setEvents(prev => (prev || []).map(e => e.id === id ? { ...e, ...fullPatch } : e));
+    const { error: err } = await supabase.from("events").update(fullPatch).eq("id", id);
+    if (err) { setError(err.message); loadEvents(); }
+  }
+
+  // Nazwa osoby po jej profile_id - do podpisu "kto edytował" (przeszukuje właściwy zestaw osób
+  // zależnie od trybu: pojedyncza firma albo widok "wszystkie firmy")
+  function profileNameById(profileId, companyId){
+    if (!profileId) return null;
+    const roster = isAll ? (teamByCompany[companyId] || []) : team;
+    const t = roster.find(m => m.profile_id === profileId);
+    if (t) return t.profiles?.full_name || t.profiles?.email;
+    if (profileId === profile.id) return profile.full_name || profile.email;
+    return null;
+  }
+
+  // Po wybraniu dnia: zadania, które już mają komentarze albo checklistę,
+  // rozwijają się od razu - bez potrzeby dodatkowego klikania.
+  useEffect(() => {
+    dayEvents.forEach(ev => {
+      const hasComments = (badgeCounts.comments?.[ev.id] || 0) > 0;
+      const hasChecklist = (badgeCounts.checklist?.[ev.id]?.total || 0) > 0;
+      if (hasComments && !openComments[ev.id]) {
+        setOpenComments(o => ({ ...o, [ev.id]: true }));
+        if (!commentsByEvent[ev.id]) loadComments(ev.id);
+      }
+      if (hasChecklist && !openChecklist[ev.id]) {
+        setOpenChecklist(o => ({ ...o, [ev.id]: true }));
+        if (!checklistByEvent[ev.id]) loadChecklist(ev.id);
+      }
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedKey, badgeCounts, dayEvents.length]);
+
   if (events === null) {
     return <div style={{ ...pageWrap, display: "flex", alignItems: "center", justifyContent: "center", gap: 8, color: "#8b8f86" }}><Loader2 size={18} /> Wczytywanie…</div>;
   }
@@ -587,7 +623,7 @@ export default function Calendar({ companyId, role, profile, onExit, onLogout })
               date={selectedDate} dayEvents={dayEvents} showForm={showForm} setShowForm={setShowForm}
               titleRef={titleRef} typeRef={typeRef} categoryRef={categoryRef} timeRef={timeRef} endDateRef={endDateRef} assigneeRef={assigneeRef} privateRef={privateRef}
               team={rosterForForm} canPrivate={canPrivateForForm} formError={formError} addEvent={addEvent}
-              toggleComplete={toggleComplete} toggleStarred={toggleStarred} removeEvent={removeEvent}
+              toggleComplete={toggleComplete} toggleStarred={toggleStarred} removeEvent={removeEvent} updateEvent={updateEvent} profileNameById={profileNameById}
               openComments={openComments} toggleCommentsPanel={toggleCommentsPanel}
               commentsByEvent={commentsByEvent} addComment={addComment} colorFor={eventColor} nameFor={eventAssigneeName}
               isAll={isAll} companiesMeta={companiesMeta} formCompanyId={formCompanyId} setFormCompanyId={setFormCompanyId}
@@ -652,7 +688,7 @@ export default function Calendar({ companyId, role, profile, onExit, onLogout })
               <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                 {upcoming.map(ev => (
                   <EventRow key={ev.id} ev={ev} showDate
-                    toggleComplete={toggleComplete} toggleStarred={toggleStarred} removeEvent={removeEvent}
+                    toggleComplete={toggleComplete} toggleStarred={toggleStarred} removeEvent={removeEvent} updateEvent={updateEvent} profileNameById={profileNameById}
                     isOpen={!!openComments[ev.id]} onToggleComments={() => toggleCommentsPanel(ev.id)}
                     comments={commentsByEvent[ev.id] || []} addComment={addComment}
                     colorFor={eventColor} nameFor={eventAssigneeName}
@@ -663,6 +699,8 @@ export default function Calendar({ companyId, role, profile, onExit, onLogout })
                     checklist={checklistByEvent[ev.id] || []} addChecklistItem={addChecklistItem}
                     toggleChecklistItem={toggleChecklistItem} removeChecklistItem={removeChecklistItem}
                     profile={profile} badgeCounts={badgeCounts}
+                    roster={isAll ? (teamByCompany[ev.company_id] || []) : team}
+                    canPrivate={isAll ? (profile.is_super_admin || (teamByCompany[ev.company_id] || []).some(m => m.profile_id === profile.id && m.role === "szef")) : isBossOrAdmin}
                   />
                 ))}
               </div>
@@ -678,7 +716,7 @@ function DayPanel({ date, dayEvents, showForm, setShowForm, titleRef, typeRef, c
   team, canPrivate, formError, addEvent, toggleComplete, toggleStarred, removeEvent, openComments, toggleCommentsPanel,
   commentsByEvent, addComment, colorFor, nameFor, isAll, companiesMeta, formCompanyId, setFormCompanyId, showCompanyBadge,
   openReminders, toggleRemindersPanel, remindersByEvent, addReminder, removeReminder,
-  openChecklist, toggleChecklistPanel, checklistByEvent, addChecklistItem, toggleChecklistItem, removeChecklistItem, profile, badgeCounts, expandTaskDetails }){
+  openChecklist, toggleChecklistPanel, checklistByEvent, addChecklistItem, toggleChecklistItem, removeChecklistItem, profile, badgeCounts, expandTaskDetails, updateEvent, profileNameById }){
   const label = date.toLocaleDateString("pl-PL", { weekday: "long", day: "numeric", month: "long" });
   return (
     <div style={card}>
@@ -729,7 +767,7 @@ function DayPanel({ date, dayEvents, showForm, setShowForm, titleRef, typeRef, c
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           {dayEvents.map(ev => (
             <EventRow key={ev.id} ev={ev}
-              toggleComplete={toggleComplete} toggleStarred={toggleStarred} removeEvent={removeEvent}
+              toggleComplete={toggleComplete} toggleStarred={toggleStarred} removeEvent={removeEvent} updateEvent={updateEvent} profileNameById={profileNameById}
               isOpen={!!openComments[ev.id]} onToggleComments={() => toggleCommentsPanel(ev.id)}
               comments={commentsByEvent[ev.id] || []} addComment={addComment}
               colorFor={colorFor} nameFor={nameFor}
@@ -739,7 +777,7 @@ function DayPanel({ date, dayEvents, showForm, setShowForm, titleRef, typeRef, c
               isOpenChecklist={!!openChecklist[ev.id]} onToggleChecklist={() => toggleChecklistPanel(ev.id)} onExpand={() => expandTaskDetails(ev.id)}
               checklist={checklistByEvent[ev.id] || []} addChecklistItem={addChecklistItem}
               toggleChecklistItem={toggleChecklistItem} removeChecklistItem={removeChecklistItem}
-              profile={profile} badgeCounts={badgeCounts}
+              profile={profile} badgeCounts={badgeCounts} roster={team} canPrivate={canPrivate}
             />
           ))}
         </div>
@@ -748,15 +786,26 @@ function DayPanel({ date, dayEvents, showForm, setShowForm, titleRef, typeRef, c
   );
 }
 
-function EventRow({ ev, showDate, toggleComplete, toggleStarred, removeEvent, isOpen, onToggleComments, comments, addComment, colorFor, nameFor, companyBadge,
+function EventRow({ ev, showDate, toggleComplete, toggleStarred, removeEvent, updateEvent, isOpen, onToggleComments, comments, addComment, colorFor, nameFor, companyBadge,
   isOpenReminders, onToggleReminders, reminders, addReminder, removeReminder,
-  isOpenChecklist, onToggleChecklist, checklist, addChecklistItem, toggleChecklistItem, removeChecklistItem, profile, onExpand, badgeCounts }){
+  isOpenChecklist, onToggleChecklist, checklist, addChecklistItem, toggleChecklistItem, removeChecklistItem, profile, onExpand, badgeCounts, profileNameById, roster, canPrivate }){
   const meta = TYPE_META[ev.type] || TYPE_META.zadanie;
   const cat = CATEGORY_META[ev.category] || CATEGORY_META.inne;
   const userColor = colorFor(ev);
   const commentRef = useRef(null);
   const checklistInputRef = useRef(null);
   const [selectedReminder, setSelectedReminder] = React.useState("");
+  const [isEditing, setIsEditing] = React.useState(false);
+  const [editError, setEditError] = React.useState("");
+  const editTitleRef = useRef(null);
+  const editTypeRef = useRef(null);
+  const editCategoryRef = useRef(null);
+  const editTimeRef = useRef(null);
+  const editEndDateRef = useRef(null);
+  const editAssigneeRef = useRef(null);
+  const editPrivateRef = useRef(null);
+
+  const editorName = ev.updated_by ? profileNameById?.(ev.updated_by, ev.company_id) : null;
 
   // Liczniki-znaczniki widoczne OD RAZU (bez otwierania panelu) - pobrane zbiorczo dla wszystkich zadań.
   // Gdy panel jest już otwarty i wczytany, korzystamy z dokładnych danych z niego.
@@ -789,7 +838,61 @@ function EventRow({ ev, showDate, toggleComplete, toggleStarred, removeEvent, is
     if (checklistInputRef.current) checklistInputRef.current.value = "";
   }
 
+  function saveEdit(){
+    const title = (editTitleRef.current?.value || "").trim();
+    if (!title) { setEditError("Nazwa nie może być pusta."); return; }
+    const endDateVal = editEndDateRef.current?.value || "";
+    updateEvent(ev.id, {
+      title,
+      type: editTypeRef.current?.value || "zadanie",
+      category: editCategoryRef.current?.value || "inne",
+      event_time: editTimeRef.current?.value || null,
+      event_end_date: endDateVal && endDateVal > ev.event_date ? endDateVal : null,
+      assignee_id: editAssigneeRef.current?.value || null,
+      is_private: canPrivate ? !!editPrivateRef.current?.checked : ev.is_private,
+    });
+    setIsEditing(false);
+    setEditError("");
+  }
+
   const doneCount = checklist.filter(i => i.done).length;
+
+  if (isEditing) {
+    return (
+      <div className="event-row" style={{ border: "1px solid #d4c4b0", borderLeft: `3px solid ${userColor}`, borderRadius: 10, padding: "12px 14px", background: "#fbf9f3" }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          <input ref={editTitleRef} defaultValue={ev.title} autoFocus placeholder="Nazwa zadania lub spotkania" style={inputStyle} />
+          <div className="form-row" style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <select ref={editTypeRef} defaultValue={ev.type} style={{ ...inputStyle, flex: "1 1 120px" }}>
+              <option value="zadanie">Zadanie</option><option value="spotkanie">Spotkanie</option>
+            </select>
+            <select ref={editCategoryRef} defaultValue={ev.category} style={{ ...inputStyle, flex: "1 1 140px" }}>
+              {Object.entries(CATEGORY_META).map(([k,v]) => <option key={k} value={k}>{v.label}</option>)}
+            </select>
+            <input ref={editTimeRef} type="time" defaultValue={ev.event_time ? ev.event_time.slice(0,5) : ""} style={{ ...inputStyle, flex: "1 1 100px" }} />
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+            <label style={{ fontSize: 11.5, color: "#8b6b5a" }}>Data zakończenia (dla wydarzeń wielodniowych)</label>
+            <input ref={editEndDateRef} type="date" min={ev.event_date} defaultValue={ev.event_end_date || ""} style={inputStyle} />
+          </div>
+          <select ref={editAssigneeRef} defaultValue={ev.assignee_id || ""} style={inputStyle}>
+            <option value="">Cały zespół</option>
+            {(roster || []).map(t => <option key={t.profile_id} value={t.profile_id}>{t.profiles?.full_name || t.profiles?.email}</option>)}
+          </select>
+          {canPrivate && (
+            <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, color: "#5c4a1a" }}>
+              <input ref={editPrivateRef} type="checkbox" defaultChecked={ev.is_private} /> Prywatne — niewidoczne dla zespołu
+            </label>
+          )}
+          {editError && <div style={{ color: "#d94a38", fontSize: 12.5 }}>{editError}</div>}
+          <div style={{ display: "flex", gap: 8 }}>
+            <button type="button" onClick={saveEdit} style={saveBtn}>Zapisz</button>
+            <button type="button" onClick={() => { setIsEditing(false); setEditError(""); }} style={cancelBtn}>Anuluj</button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="event-row" style={{ border: "1px solid #d4c4b0", borderLeft: `3px solid ${userColor}`, borderRadius: 10, padding: "12px 14px" }}>
@@ -805,6 +908,9 @@ function EventRow({ ev, showDate, toggleComplete, toggleStarred, removeEvent, is
             <button onClick={() => toggleStarred(ev)} style={{ background: "none", border: "none", cursor: "pointer", padding: 0, display: "flex" }} title="Oznacz jako ważne">
               <Star size={16} fill={ev.starred ? "#C5E548" : "none"} color={ev.starred ? "#C5E548" : "#c3bfae"} />
             </button>
+            <button onClick={() => setIsEditing(true)} style={{ background: "none", border: "none", cursor: "pointer", padding: 0, display: "flex" }} title="Edytuj zadanie">
+              <Pencil size={14} color="#8b6b5a" />
+            </button>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", marginTop: 4 }}>
             {companyBadge && <span style={{ fontSize: 11.5, fontWeight: 800, color: "#fff", background: colorFor(ev), padding: "3px 9px", borderRadius: 20 }}>{companyBadge}</span>}
@@ -818,6 +924,11 @@ function EventRow({ ev, showDate, toggleComplete, toggleStarred, removeEvent, is
             {ev.event_time && <span>{ev.event_time.slice(0,5)}</span>}
             <span style={{ display: "flex", alignItems: "center", gap: 4 }}><span style={{ width: 8, height: 8, borderRadius: "50%", background: userColor }} />{nameFor(ev)}</span>
           </div>
+          {editorName && (
+            <div style={{ fontSize: 11, color: "#a3a698", fontStyle: "italic", marginTop: 2 }}>
+              {editorName} wprowadził(a) zmianę {ev.updated_at ? new Date(ev.updated_at).toLocaleString("pl-PL", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : ""}
+            </div>
+          )}
         </div>
       </div>
 
